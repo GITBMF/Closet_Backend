@@ -37,7 +37,7 @@ Rôle :
 -->	Evite que l’API soit bombardee de requetes bidons
 En le mettant dans Docker dès maintenant, le setup réseau sera rigoureusement le même le jour où on migrera vers le Cloud ou vers un autre Serveur
 
-* backend (L'API Python / FastAPI)
+* backend (FastAPI)
 
 Rôle : Il héberge le code python de l’API, traite les requêtes de l'application mobile et expose les différentes routes (/users, /items, etc.) qui agissent comme des aiguillages pour exécuter la bonne logique métier.
 
