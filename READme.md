@@ -29,7 +29,7 @@ closet-backend/
 🐳 Infrastructure & Containers Docker
 L'application repose sur 3 containers interconnectés via Docker Compose pour garantir une reproductibilité parfaite entre l'environnement de développement, le VPS Hostinger et le futur Cloud :
 
-- `nginx` (Le Portier / Reverse Proxy)
+* `nginx` (Le Portier / Reverse Proxy)
 
 Rôle : 
 -	Renvoie les requetes vers le bon port,
@@ -37,12 +37,11 @@ Rôle :
 -->	Evite que l’API soit bombardee de requetes bidons
 En le mettant dans Docker dès maintenant, le setup réseau sera rigoureusement le même le jour où on migrera vers le Cloud ou vers un autre Serveur
 
-
-- backend (L'API Python / FastAPI)
+* backend (L'API Python / FastAPI)
 
 Rôle : Il héberge le code python de l’API, traite les requêtes de l'application mobile et expose les différentes routes (/users, /items, etc.) qui agissent comme des aiguillages pour exécuter la bonne logique métier.
 
-- db (Base de Données PostgreSQL)
+* db (Base de Données PostgreSQL)
 
 Rôle : Il stocke toutes les données relationnelles de l'application de manière isolée, 
  garantir l'intégrité et faciliter les sauvegardes (pg_dump).
