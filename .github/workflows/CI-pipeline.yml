@@ -19,6 +19,6 @@ jobs:
       
       # Install the necessary python dependencies
       - name: Python libraries
-        run: pip install -r Tests/requirements.txt
+        run: pip install -r requirements.txt
 
     
