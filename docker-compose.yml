@@ -1,51 +1,23 @@
-name: Tests on Microservices
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: db_closet
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - ./db_closet:/var/lib/postgresql/data
+      - ./init1.sql:/docker-entrypoint-initdb.d/init.sql 
+    networks:
+      - app-network
 
-on: [push]
+volumes:
+  postgres_data:
 
-jobs: 
-  CI-micro-services:
-    runs-on: ubuntu-latest
-    steps:
-      # SETUP THE ENVIRONMENT
-      # Clone the repo
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      # Setup the Python and its version
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-      
-      # Install the necessary python dependencies
-      - name: Python libraries
-        run: pip install -r Tests/requirements.txt
-
-      # BUILD THE FIRST TWO CONTAINERS
-      - name: Build the containers
-        run: docker compose up weather-db ; docker compose up weather_dbt
-
-      # WEATHER-DB: 
-      # Run the Python Tests 
-      - name: Run pytest on the generated file
-        run: pytest Tests/test_weather-db.py
-      
-      # Check the state of the RAW
-      - name: Check RAM
-        run: free -h
-
-      # WEATHER_DBT :
-      # Run dbt test in schema.yml
-      - name: Run dbt tests on data
-        run: docker compose run weather_dbt dbt test
-      # Run python tests for database integrity
-      - name: Check database integrity
-        run: pytest Tests/test_weather_dbt.py
-
-      # SHUT DOWN ALL THE CONTAINERS AND KILL THE ORPHANS
-      # Shut down and delete the orphans
-      - name: Shut down the container
-        run: docker compose down --remove-orphans
-      # Clean docker ressources
-      - name: Clean ressources
-        run: docker system prune -f
+networks:
+  app-network:
+    driver: bridge

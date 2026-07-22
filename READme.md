@@ -44,4 +44,6 @@ Rôle : Il héberge le code python de l’API, traite les requêtes de l'applica
 * db (Base de Données PostgreSQL)
 
 Rôle : Il stocke toutes les données relationnelles de l'application de manière isolée, 
+ - On lance la bdd avec la commande suivante :
+    `docker compose --env-file .env.dev up -d` si on est en dev.
  garantir l'intégrité et faciliter les sauvegardes (pg_dump).
