@@ -1,2 +1,203 @@
+# ============================================================================
+#  ClosET — .gitignore
+#  Covers: Python/FastAPI backend · Next.js admin · Flutter app · tooling
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# SECRETS  —  never commit these
+# ----------------------------------------------------------------------------
+.env
 .env.*
+env
+env.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+secrets/
+credentials.json
+service-account*.json
+# CinetPay / provider credentials, signing keys, webhook secrets
+config/*.local.*
+
+# ----------------------------------------------------------------------------
+# PYTHON / FASTAPI
+# ----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib60/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# virtual environments
+.venv/
+venv/
+ENV/
+env/
+.python-version
+
+# testing / linting caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.hypothesis/
+
+# local databases & dumps
+*.sqlite3
+*.db
+*.dump
+*.sql.gz
+!closet_schema.sql
 db_closet/*
+
+# uploaded / generated media (S3 in production)
+uploads/
+media/
+storage/
+tmp/
+
+# ----------------------------------------------------------------------------
+# NODE / NEXT.JS (admin back office)
+# ----------------------------------------------------------------------------
+node_modules/
+.pnp
+.pnp.js
+.next/
+out/
+.turbo/
+.vercel/
+.swc/
+
+# build output
+/build
+/dist
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# testing
+/coverage
+.nyc_output/
+
+# lockfiles: keep ONE, delete the lines for the manager you use
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# ----------------------------------------------------------------------------
+# FLUTTER / DART (mobile app)
+# ----------------------------------------------------------------------------
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+coverage/
+*.g.dart.lock
+generated_plugin_registrant.dart
+
+# Android
+android/.gradle/
+android/captures/
+android/local.properties
+android/key.properties
+android/app/release/
+android/app/debug/
+android/app/profile/
+*.apk
+*.aab
+*.ap_
+
+# iOS
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/flutter_export_environment.sh
+ios/Flutter/Generated.xcconfig
+ios/Runner/GeneratedPluginRegistrant.*
+*.ipa
+*.dSYM.zip
+DerivedData/
+
+# ----------------------------------------------------------------------------
+# EDITORS / IDE
+# ----------------------------------------------------------------------------
+.idea/
+.vscode/
+!.vscode/settings.json.example
+*.iml
+*.ipr
+*.iws
+.fleet/
+.history/
+*.swp
+*.swo
+*~
+
+# ----------------------------------------------------------------------------
+# OS
+# ----------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ----------------------------------------------------------------------------
+# DOCKER / INFRA (keep compose files, ignore local overrides)
+# ----------------------------------------------------------------------------
+docker-compose.override.yml
+*.local.yml
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# ----------------------------------------------------------------------------
+# LOGS & TEMP
+# ----------------------------------------------------------------------------
+*.log
+logs/
+*.pid
+*.seed
+*.pid.lock
+.cache/
+
+parse.py
+codebase.txt
+codebase.part*.txt
+*.export.txt
