@@ -511,3 +511,151 @@ class TestAudit:
         )
         assert r.status_code == 200
         assert r.json()["meta"]["total"] >= 1
+
+
+class TestBootstrapAdmin:
+    """First-launch administrator provisioning."""
+
+    async def _bootstrap(self, email: str, password: str, name: str = "Boot Admin"):
+        from app.core.config import settings as s
+        from app.modules.identity.bootstrap import ensure_bootstrap_admin
+
+        before = (s.BOOTSTRAP_ADMIN_EMAIL, s.BOOTSTRAP_ADMIN_PASSWORD, s.BOOTSTRAP_ADMIN_NAME)
+        s.BOOTSTRAP_ADMIN_EMAIL, s.BOOTSTRAP_ADMIN_PASSWORD, s.BOOTSTRAP_ADMIN_NAME = (
+            email, password, name,
+        )
+        try:
+            await ensure_bootstrap_admin()
+        finally:
+            (s.BOOTSTRAP_ADMIN_EMAIL, s.BOOTSTRAP_ADMIN_PASSWORD,
+             s.BOOTSTRAP_ADMIN_NAME) = before
+
+    async def test_creates_admin_on_first_launch(self, client: AsyncClient):
+        await self._bootstrap("boot@closet.cm", "Premier2026Secret")
+        r = await client.post(
+            f"{API}/auth/login",
+            json={"email": "boot@closet.cm", "password": "Premier2026Secret"},
+        )
+        assert r.status_code == 200
+        assert r.json()["user"]["role"] == UserRole.ADMIN
+        assert r.json()["user"]["must_change_password"] is True
+
+    async def test_is_idempotent(self, client: AsyncClient):
+        await self._bootstrap("boot@closet.cm", "Premier2026Secret")
+        await self._bootstrap("other@closet.cm", "Premier2026Secret")
+        async with AsyncSessionLocal() as s:
+            n = (
+                await s.execute(text("SELECT count(*) FROM users WHERE role='admin'"))
+            ).scalar_one()
+        assert n == 1
+
+    async def test_no_config_means_no_account(self, client: AsyncClient):
+        await self._bootstrap("", "")
+        async with AsyncSessionLocal() as s:
+            n = (await s.execute(text("SELECT count(*) FROM users"))).scalar_one()
+        assert n == 0
+
+    async def test_weak_password_creates_nothing(self, client: AsyncClient):
+        await self._bootstrap("boot@closet.cm", "admin123")
+        async with AsyncSessionLocal() as s:
+            n = (await s.execute(text("SELECT count(*) FROM users"))).scalar_one()
+        assert n == 0
+
+    async def test_promotes_an_existing_customer(self, client: AsyncClient):
+        await register(client)                      # awa@example.cm, customer
+        await self._bootstrap(GOOD["email"], "Premier2026Secret")
+        async with AsyncSessionLocal() as s:
+            role, flag = (
+                await s.execute(
+                    text("SELECT role, must_change_password FROM users WHERE email=:e"),
+                    {"e": GOOD["email"]},
+                )
+            ).first()
+        assert role == "admin" and flag is True
+
+
+class TestForcedPasswordChange:
+    async def _pending_admin(self, client: AsyncClient) -> dict:
+        await TestBootstrapAdmin()._bootstrap("boot@closet.cm", "Premier2026Secret")
+        return (
+            await client.post(
+                f"{API}/auth/login",
+                json={"email": "boot@closet.cm", "password": "Premier2026Secret"},
+            )
+        ).json()
+
+    async def test_protected_routes_are_blocked(self, client: AsyncClient):
+        tokens = await self._pending_admin(client)
+        r = await client.get(
+            f"{API}/admin/users",
+            headers={"Authorization": f"Bearer {tokens['access_token']}"},
+        )
+        assert r.status_code == 403
+        assert r.json()["error"]["code"] == "password_change_required"
+
+    async def test_me_stays_reachable(self, client: AsyncClient):
+        tokens = await self._pending_admin(client)
+        r = await client.get(
+            f"{API}/me", headers={"Authorization": f"Bearer {tokens['access_token']}"}
+        )
+        assert r.status_code == 200
+        assert r.json()["must_change_password"] is True
+
+    async def test_changing_password_unlocks_everything(self, client: AsyncClient):
+        tokens = await self._pending_admin(client)
+        r = await client.post(
+            f"{API}/me/password",
+            json={
+                "current_password": "Premier2026Secret",
+                "new_password": "MonPropreMotDePasse2026",
+            },
+            headers={"Authorization": f"Bearer {tokens['access_token']}"},
+        )
+        assert r.status_code == 200
+
+        fresh = await client.post(
+            f"{API}/auth/login",
+            json={"email": "boot@closet.cm", "password": "MonPropreMotDePasse2026"},
+        )
+        assert fresh.json()["user"]["must_change_password"] is False
+        allowed = await client.get(
+            f"{API}/admin/users",
+            headers={"Authorization": f"Bearer {fresh.json()['access_token']}"},
+        )
+        assert allowed.status_code == 200
+
+
+class TestEmailChange:
+    async def test_requires_current_password(self, client: AsyncClient):
+        await register(client)
+        tokens = await login(client)
+        r = await client.patch(
+            f"{API}/me",
+            json={"email": "nouvelle@example.cm"},
+            headers={"Authorization": f"Bearer {tokens['access_token']}"},
+        )
+        assert r.status_code == 401
+        assert r.json()["error"]["code"] == "password_required"
+
+    async def test_changes_with_password(self, client: AsyncClient):
+        await register(client)
+        tokens = await login(client)
+        r = await client.patch(
+            f"{API}/me",
+            json={"email": "nouvelle@example.cm", "current_password": GOOD["password"]},
+            headers={"Authorization": f"Bearer {tokens['access_token']}"},
+        )
+        assert r.status_code == 200
+        assert r.json()["email"] == "nouvelle@example.cm"
+        assert (await login(client, email="nouvelle@example.cm"))["_status"] == 200
+
+    async def test_rejects_an_address_in_use(self, client: AsyncClient):
+        await register(client, email="premiere@example.cm")
+        await register(client)
+        tokens = await login(client)
+        r = await client.patch(
+            f"{API}/me",
+            json={"email": "premiere@example.cm", "current_password": GOOD["password"]},
+            headers={"Authorization": f"Bearer {tokens['access_token']}"},
+        )
+        assert r.status_code == 409

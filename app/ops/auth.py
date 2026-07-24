@@ -62,6 +62,14 @@ class OpsAuthProvider(AuthProvider):
             if not user.is_active:
                 raise LoginFailed("Ce compte est désactivé.")
 
+            if user.must_change_password:
+                # The bootstrap/recovery password is single-use: the API holds
+                # such an account at /me + /me/password. Without this check the
+                # panel would be a way around that, with full CRUD.
+                raise LoginFailed(
+                    "Changez votre mot de passe via l'API avant d'accéder au panneau."
+                )
+
             if user.role is not UserRole.ADMIN:
                 # Correct password, wrong role: log it, it is worth knowing.
                 db.add(
@@ -113,6 +121,10 @@ class OpsAuthProvider(AuthProvider):
         if user is None or not user.is_active or user.deleted_at is not None:
             return False
         if user.role is not UserRole.ADMIN:
+            return False
+        if user.must_change_password:
+            # Re-checked per request, like the role: a flag set while a session
+            # is open (e.g. an admin reset by the CLI) takes effect at once.
             return False
 
         request.state.user = user

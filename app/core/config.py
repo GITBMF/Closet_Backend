@@ -50,6 +50,14 @@ class Settings(BaseSettings):
     TOTP_ISSUER: str = "ClosET"
     ADMIN_REQUIRES_2FA: bool = True
 
+    # ---- first-run administrator -------------------------------------
+    # If both e-mail and password are set AND no administrator exists yet,
+    # one is created at startup. The account is flagged must_change_password,
+    # so the value below is a single-use credential, never a standing one.
+    BOOTSTRAP_ADMIN_EMAIL: str = ""
+    BOOTSTRAP_ADMIN_PASSWORD: str = ""
+    BOOTSTRAP_ADMIN_NAME: str = "Administrateur ClosET"
+
     # ---- internal ops panel (Starlette-Admin) ------------------------
     OPS_ENABLED: bool = True          # set false in staging/production
     OPS_ALLOW_IN_PROD: bool = False   # extra guard, see app/ops/admin.py

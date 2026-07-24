@@ -86,7 +86,28 @@ async def get_current_user_optional(
         return None
 
 
-CurrentUser = Annotated[User, Depends(get_current_user)]
+async def get_ready_user(
+    user: Annotated[User, Depends(get_current_user)],
+) -> User:
+    """A user who may actually use the API.
+
+    An account flagged `must_change_password` (bootstrap or recovery) is held
+    here: it can read its own profile and set a new password, nothing else.
+    """
+    if user.must_change_password:
+        raise PermissionDeniedError(
+            "Vous devez définir un nouveau mot de passe avant de continuer.",
+            code="password_change_required",
+        )
+    return user
+
+
+#: Default for every protected route.
+CurrentUser = Annotated[User, Depends(get_ready_user)]
+
+#: For the few endpoints that must stay reachable while the password is
+#: pending: GET/PATCH /me, POST /me/password, POST /auth/logout.
+PendingUser = Annotated[User, Depends(get_current_user)]
 OptionalUser = Annotated[User | None, Depends(get_current_user_optional)]
 Ctx = Annotated[RequestContext, Depends(get_request_context)]
 Service = Annotated[IdentityService, Depends(get_identity_service)]

@@ -340,6 +340,7 @@ class IdentityService:
             )
 
         user.password_hash = security.hash_password(new)
+        user.must_change_password = False   # the pending flag is now satisfied
         await self.repo.revoke_all_for_user(user.id)
         await self.repo.add_audit(
             action=AuditAction.USER_PASSWORD_CHANGED,
@@ -401,6 +402,7 @@ class IdentityService:
 
         record.used_at = datetime.now(UTC)
         user.password_hash = security.hash_password(new_password)
+        user.must_change_password = False
         user.failed_login_count = 0
         user.locked_until = None
         await self.repo.revoke_all_for_user(user.id)
@@ -482,9 +484,39 @@ class IdentityService:
         full_name: str | None,
         phone: str | None,
         city: str | None,
+        email: str | None = None,
+        current_password: str | None = None,
         ctx: RequestContext,
     ) -> User:
         changed: dict[str, str | None] = {}
+
+        if email is not None and email.lower().strip() != (user.email or "").lower():
+            # The e-mail is the login identifier and there is no verification
+            # step in this version, so require the password as proof of intent.
+            if not current_password or not security.verify_password(
+                current_password, user.password_hash
+            ):
+                raise AuthenticationError(
+                    "Mot de passe requis pour changer l'adresse e-mail.",
+                    code="password_required",
+                )
+            if await self.repo.email_exists(email):
+                raise ConflictError(
+                    "Cette adresse e-mail est déjà utilisée.", code="email_taken"
+                )
+            previous_email = user.email
+            user.email = email.lower().strip()
+            changed["email"] = user.email
+            await self.repo.add_audit(
+                action=AuditAction.USER_PROFILE_UPDATED,
+                entity_type="user",
+                entity_id=str(user.id),
+                actor_type=actor_type_for(user.role),
+                actor_id=user.id,
+                payload={"field": "email", "from": previous_email},
+                ip_address=ctx.ip,
+            )
+
         if full_name is not None and full_name != user.full_name:
             user.full_name = full_name.strip()
             changed["full_name"] = user.full_name

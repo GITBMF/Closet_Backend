@@ -9,5 +9,8 @@ ignore = [
 ]
 
 [lint.per-file-ignores]
-"tests/*" = ["S101"]          # asserts are the point
-"alembic/versions/*" = ["E"]  # generated files
+"tests/*" = ["S101"]           # asserts are the point
+"alembic/versions/*" = ["E"]   # generated files
+# Interactive prompts block the event loop on purpose: manage_admin.py is a
+# single-user CLI waiting on a human, not a server handling concurrent work.
+"scripts/manage_admin.py" = ["ASYNC250"]

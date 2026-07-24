@@ -41,6 +41,7 @@ RUN useradd --create-home --uid 10001 closet
 
 COPY --chown=closet:closet app ./app
 COPY --chown=closet:closet alembic ./alembic
+COPY --chown=closet:closet scripts ./scripts
 COPY --chown=closet:closet alembic.ini ./
 COPY --chown=closet:closet docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

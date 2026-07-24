@@ -17,6 +17,7 @@ from app.modules.identity.constants import Permission, UserRole, permissions_for
 from app.modules.identity.dependencies import (
     Ctx,
     CurrentUser,
+    PendingUser,
     Service,
     require_permission,
 )
@@ -117,7 +118,7 @@ async def refresh(payload: RefreshRequest, service: Service, ctx: Ctx) -> TokenP
 
 @router.post("/auth/logout", response_model=MessageResponse, summary="Se déconnecter")
 async def logout(
-    payload: LogoutRequest, user: CurrentUser, service: Service, ctx: Ctx
+    payload: LogoutRequest, user: PendingUser, service: Service, ctx: Ctx
 ) -> MessageResponse:
     count = await service.logout(
         user=user,
@@ -162,7 +163,7 @@ async def reset_password(
 
 # ========================================================= account
 @router.get("/me", response_model=MeResponse, summary="Mon espace")
-async def me(user: CurrentUser) -> MeResponse:
+async def me(user: PendingUser) -> MeResponse:
     base = UserPublic.from_user(user)
     return MeResponse(
         **base.model_dump(),
@@ -179,6 +180,8 @@ async def update_me(
         full_name=payload.full_name,
         phone=payload.phone,
         city=payload.city,
+        email=payload.email,
+        current_password=payload.current_password,
         ctx=ctx,
     )
     return UserPublic.from_user(updated)
@@ -190,7 +193,7 @@ async def update_me(
     summary="Changer mon mot de passe",
 )
 async def change_password(
-    payload: ChangePasswordRequest, user: CurrentUser, service: Service, ctx: Ctx
+    payload: ChangePasswordRequest, user: PendingUser, service: Service, ctx: Ctx
 ) -> MessageResponse:
     await service.change_password(
         user=user,

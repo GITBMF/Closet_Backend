@@ -11,11 +11,14 @@ from app.api.router import api_router
 from app.core.config import settings
 from app.core.database import engine
 from app.core.exceptions import register_exception_handlers
+from app.modules.identity.bootstrap import ensure_bootstrap_admin
 from app.ops.admin import mount_ops
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    # Creates the first administrator when configured; no-op otherwise.
+    await ensure_bootstrap_admin()
     yield
     await engine.dispose()
 

@@ -89,6 +89,11 @@ class UpdateProfileRequest(BaseModel):
     full_name: str | None = Field(default=None, min_length=2, max_length=150)
     phone: str | None = Field(default=None, max_length=32)
     city: str | None = Field(default=None, max_length=100)
+    # Changing the login address requires the current password: it is the
+    # account's identifier, and there is no e-mail verification in this
+    # version to catch a typo.
+    email: EmailStr | None = None
+    current_password: Password | None = None
 
     @field_validator("phone")
     @classmethod
@@ -151,6 +156,7 @@ class UserPublic(BaseModel):
     role: UserRole
     is_active: bool
     mfa_enabled: bool = False
+    must_change_password: bool = False
     created_at: datetime
     last_login_at: datetime | None = None
 
@@ -165,6 +171,7 @@ class UserPublic(BaseModel):
             role=user.role,
             is_active=user.is_active,
             mfa_enabled=user.mfa_enabled,
+            must_change_password=user.must_change_password,
             created_at=user.created_at,
             last_login_at=user.last_login_at,
         )

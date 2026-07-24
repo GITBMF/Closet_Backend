@@ -5,6 +5,7 @@ COMPOSE  := docker compose --env-file $(ENV_FILE)
 .DEFAULT_GOAL := help
 .PHONY: help install db-up db-down dev up down restart logs ps build \
         migrate revision downgrade reset-db psql db-dump check-eol shell \
+        admin-create admin-list admin-promote admin-password admin-reset-mfa \
         test lint fmt clean
 
 help:  ## show this help
@@ -58,6 +59,21 @@ reset-db:  ## DESTRUCTIVE: drop the volume and re-migrate
 	$(COMPOSE) down -v && $(COMPOSE) up -d postgres && sleep 5 && alembic upgrade head
 
 # ------------------------------------------------------------------ shells
+admin-create:  ## create the first administrator (interactive)
+	$(COMPOSE) exec api python scripts/manage_admin.py create
+
+admin-list:  ## list administrators
+	$(COMPOSE) exec api python scripts/manage_admin.py list
+
+admin-promote:  ## promote an account:  make admin-promote e=user@closet.cm
+	$(COMPOSE) exec api python scripts/manage_admin.py promote --email "$(e)"
+
+admin-password:  ## reset a password:  make admin-password e=user@closet.cm
+	$(COMPOSE) exec api python scripts/manage_admin.py set-password --email "$(e)"
+
+admin-reset-mfa:  ## clear 2FA:  make admin-reset-mfa e=user@closet.cm
+	$(COMPOSE) exec api python scripts/manage_admin.py reset-mfa --email "$(e)"
+
 psql:  ## open psql inside the database container
 	# Read the credentials from the container's own environment. Parsing
 	# $(ENV_FILE) here used to break on CRLF line endings: the trailing \r

@@ -13,7 +13,12 @@ Everything needed to run the ClosET backend, in whichever setup suits you.
   - [4. Environment variables](#4-environment-variables)
   - [5. Database \& migrations](#5-database--migrations)
   - [6. Tests](#6-tests)
-  - [7. Creating the first administrator](#7-creating-the-first-administrator)
+  - [7. Creating administrators](#7-creating-administrators)
+    - [Option A — automatic, on first launch (recommended for deployment)](#option-a--automatic-on-first-launch-recommended-for-deployment)
+    - [Option B — the CLI](#option-b--the-cli)
+    - [Subsequent administrators](#subsequent-administrators)
+    - [Break-glass recovery](#break-glass-recovery)
+    - [Who should be able to run this](#who-should-be-able-to-run-this)
   - [8. Trying the API](#8-trying-the-api)
   - [9. Troubleshooting](#9-troubleshooting)
 
@@ -192,25 +197,112 @@ Inside Docker: `docker compose exec api pytest -q`.
 
 ---
 
-## 7. Creating the first administrator
+## 7. Creating administrators
 
-There is no bootstrap endpoint by design — promoting a user is a deliberate, audited act.
+There is no bootstrap endpoint by design — account creation with elevated
+rights must not be reachable from the internet. Use the CLI on the server.
+
+### Option A — automatic, on first launch (recommended for deployment)
+
+Set both values in the environment file **before** the first start:
 
 ```bash
-# 1. register normally (through /docs, the app, or curl)
-curl -X POST http://localhost:8000/api/v1/auth/register \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"admin@closet.cm","password":"ChangeMe2026","full_name":"Admin ClosET"}'
-
-# 2. promote
-make psql
-# then:
-UPDATE users SET role = 'admin' WHERE email = 'admin@closet.cm';
+BOOTSTRAP_ADMIN_EMAIL=admin@closet.cm
+BOOTSTRAP_ADMIN_PASSWORD=<a long single-use password>
+BOOTSTRAP_ADMIN_NAME=Admin ClosET
 ```
 
-Log in again (the old token carries the old role and is now rejected as `stale_token`), then enable two-factor authentication immediately via `POST /api/v1/me/mfa/setup` and `/me/mfa/verify`. With `ADMIN_REQUIRES_2FA=true` an administrator cannot switch it off afterwards.
+On startup the API creates that administrator if — and only if — no
+administrator exists yet. It is safe on every restart: once one exists, the
+step is skipped.
 
----
+The account is flagged **must change password**. The holder can log in, read
+`/me` and call `/me/password`, and nothing else: every other endpoint answers
+`403 password_change_required` until a new password is set. That makes the
+value in the environment file a single-use credential rather than a standing
+one, which matters because it lives in a file, in your deployment history, and
+possibly in a chat message.
+
+Three guards worth knowing:
+
+* **No defaults.** With the variables empty, nothing is created — there is no
+  built-in `admin/admin`.
+* **Weak passwords are refused.** The value must satisfy the normal policy and
+  must not be a well-known default; if it fails, the API logs an error, creates
+  nothing, and still starts (a weak bootstrap password should not take the
+  storefront down).
+* **An existing customer with that address is promoted**, not duplicated — and
+  is also required to change their password.
+
+After first login: change the password, then enrol two-factor authentication
+via `POST /api/v1/me/mfa/setup`. The e-mail address can be changed later
+through `PATCH /api/v1/me` (it requires `current_password`, since the address
+is the login identifier and there is no verification step in this version).
+
+Then clear `BOOTSTRAP_ADMIN_PASSWORD` from the environment file.
+
+### Option B — the CLI
+
+```bash
+# full docker
+docker compose exec api python scripts/manage_admin.py create      # or: make admin-create
+
+# host / hybrid
+python scripts/manage_admin.py create
+```
+
+It prompts for e-mail, name and password, then walks you through enrolling
+two-factor authentication — printing the `otpauth://` URI to scan and asking
+for a code to confirm before switching 2FA on. Confirming first matters: with
+`ADMIN_REQUIRES_2FA=true` an administrator cannot turn 2FA off afterwards, so
+enabling it without a verified authenticator would lock the account out
+permanently.
+
+Non-interactive (CI, provisioning script) — pipe the password so it never
+reaches shell history:
+
+```bash
+printf '%s' "$ADMIN_PASSWORD" | python scripts/manage_admin.py create \
+    --email admin@closet.cm --name "Admin ClosET" --password-stdin --no-mfa
+```
+
+`--no-mfa` skips enrolment; enrol straight away through
+`POST /api/v1/me/mfa/setup`.
+
+### Subsequent administrators
+
+Once one administrator exists, create the rest **from the back office**:
+`POST /api/v1/admin/users` with `"role": "admin"`. The CLI refuses to create a
+second one unless you pass `--force`, so a stray script cannot quietly mint
+extra administrators.
+
+### Break-glass recovery
+
+Because this version sends no e-mail, `forgot-password` produces a token
+nobody can deliver — these commands are the only recovery path. Each writes to
+`audit_logs` with `actor_type='system'` and `{"via": "cli"}`.
+
+| Situation | Command |
+|---|---|
+| Forgotten password / account locked out | `manage_admin.py set-password --email <address>` |
+| Lost the authenticator device | `manage_admin.py reset-mfa --email <address>` |
+| Promote an existing customer | `manage_admin.py promote --email <address>` |
+| Who are the administrators? | `manage_admin.py list` |
+
+`set-password` also clears the lockout counter, and both it and `promote`
+revoke every existing session, since permissions are embedded in access
+tokens.
+
+Makefile equivalents: `make admin-create`, `make admin-list`,
+`make admin-promote e=user@closet.cm`, `make admin-password e=…`,
+`make admin-reset-mfa e=…`.
+
+### Who should be able to run this
+
+Anyone with a shell on the server can create an administrator — that is
+inherent to CLI bootstrapping, and the reason the commands are audited.
+Restrict SSH access accordingly, and review `audit_logs` for
+`{"via": "cli"}` entries you did not expect.
 
 ## 8. Trying the API
 

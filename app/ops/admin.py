@@ -35,8 +35,9 @@ class UserView(ModelView):
 
     fields = [
         "id", "email", "full_name", "phone", "city", "role",
-        "is_active", "totp_enabled_at", "failed_login_count",
-        "locked_until", "last_login_at", "created_at", "deleted_at",
+        "is_active", "must_change_password", "totp_enabled_at",
+        "failed_login_count", "locked_until", "last_login_at",
+        "created_at", "deleted_at",
     ]
     exclude_fields_from_list = ["id", "city", "totp_enabled_at", "deleted_at"]
     exclude_fields_from_create = [
