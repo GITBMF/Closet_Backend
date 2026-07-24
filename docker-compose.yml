@@ -1,23 +1,59 @@
+# Base stack: PostgreSQL 18 + the API.
+#
+#   docker compose up -d              -> base + docker-compose.override.yml (dev)
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d   (VPS)
+#
+# PostgreSQL 18 NOTE: the official image moved PGDATA to
+# /var/lib/postgresql/18/docker and the VOLUME to /var/lib/postgresql.
+# Mounting a volume at the old /var/lib/postgresql/data path silently loses
+# data (or fails to start), so the volume below targets /var/lib/postgresql.
+
 services:
   postgres:
-    image: postgres:16-alpine
-    container_name: db_closet
+    image: postgres:18-alpine
+    container_name: closet_db
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
-    ports:
-      - "${POSTGRES_PORT}:5432"
     volumes:
-      - ./db_closet:/var/lib/postgresql/data
-      - ./init1.sql:/docker-entrypoint-initdb.d/init.sql 
-    networks:
-      - app-network
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks: [closet_net]
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: closet_api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # inside the network the database is reachable by service name
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+    env_file:
+      - ${ENV_FILE:-.env.dev}
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request;urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks: [closet_net]
 
 volumes:
   postgres_data:
 
 networks:
-  app-network:
+  closet_net:
     driver: bridge

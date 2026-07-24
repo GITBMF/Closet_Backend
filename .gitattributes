@@ -1,0 +1,33 @@
+# Normalise line endings. Without this, a file edited or downloaded on
+# Windows can arrive with CRLF — which silently breaks two things here:
+#   * docker/entrypoint.sh -> the container fails with "no such file or
+#     directory" because the shebang line ends in \r
+#   * .env.* -> the trailing \r becomes part of the value (a role name,
+#     a password, a port), producing errors that look nothing like the cause
+* text=auto eol=lf
+
+# always LF, no exceptions
+*.sh            text eol=lf
+*.py            text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+*.toml          text eol=lf
+*.ini           text eol=lf
+*.sql           text eol=lf
+*.md            text eol=lf
+*.mako          text eol=lf
+Makefile        text eol=lf
+Dockerfile*     text eol=lf
+.env*           text eol=lf
+.gitignore      text eol=lf
+.dockerignore   text eol=lf
+
+# binary — never touch
+*.png           binary
+*.jpg           binary
+*.jpeg          binary
+*.webp          binary
+*.pdf           binary
+*.ico           binary
+*.woff          binary
+*.woff2         binary

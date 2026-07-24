@@ -1,0 +1,38 @@
+# VPS deployment:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod up -d --build
+#
+# The database port is deliberately NOT published: reach it through the
+# network, or `docker compose exec postgres psql`.
+services:
+  postgres:
+    restart: always
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=100"
+      - "-c"
+      - "shared_buffers=256MB"
+
+  api:
+    restart: always
+    build:
+      target: runtime
+    environment:
+      DEBUG: "false"
+    expose:
+      - "8000"
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: closet_nginx
+    restart: always
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./docker/nginx/certs:/etc/nginx/certs:ro
+    networks: [closet_net]

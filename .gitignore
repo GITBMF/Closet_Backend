@@ -8,8 +8,9 @@
 # ----------------------------------------------------------------------------
 .env
 .env.*
-env
-env.*
+/env
+# root only: a bare `env.*` would also ignore alembic/env.py
+/env.*
 !.env.example
 !.env.sample
 *.pem
@@ -181,7 +182,7 @@ desktop.ini
 # ----------------------------------------------------------------------------
 # DOCKER / INFRA (keep compose files, ignore local overrides)
 # ----------------------------------------------------------------------------
-docker-compose.override.yml
+# docker-compose.override.yml is COMMITTED (shared dev config)
 *.local.yml
 .terraform/
 *.tfstate

@@ -1,0 +1,13 @@
+line-length = 100
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC"]
+ignore = [
+    "B008",  # FastAPI dependencies are function calls in defaults by design
+    "E501",  # long lines are caught by the formatter
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["S101"]          # asserts are the point
+"alembic/versions/*" = ["E"]  # generated files

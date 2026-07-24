@@ -1,1 +1,24 @@
-fastapi==0.139.2
+# --- runtime ---
+fastapi==0.115.6
+uvicorn[standard]==0.51.0
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.31.0  # 0.31 is the first release supporting PostgreSQL 18
+psycopg2-binary==2.9.12  # Alembic uses the sync driver
+alembic==1.18.5
+pydantic==2.10.4
+pydantic-settings==2.14.2
+email-validator==2.3.0
+python-jose[cryptography]==3.5.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1  # pin: 4.1+ breaks passlib's version probe
+python-multipart==0.0.32  # required by FastAPI for form / file uploads
+pyotp==2.10.0
+starlette-admin==0.17.1  # internal /ops panel
+itsdangerous==2.2.0  # signed session cookie for /ops
+
+# --- dev / test ---
+httpx==0.28.1  # test client
+pytest==9.1.1
+pytest-asyncio==1.4.0  # requires pytest >= 8.4
+ruff==0.16.0
+pathspec==1.0.4  # lets scripts/codebase_to_txt.py honour .gitignore

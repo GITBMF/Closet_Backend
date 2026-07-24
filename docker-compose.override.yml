@@ -1,0 +1,19 @@
+# Applied automatically by `docker compose up`. Local development only:
+# ports exposed on the host, source mounted, hot reload on.
+services:
+  postgres:
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+
+  api:
+    build:
+      target: dev
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    volumes:
+      - ./app:/srv/app:ro
+      - ./alembic:/srv/alembic:ro
+      - ./tests:/srv/tests:ro
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      DEBUG: "true"
