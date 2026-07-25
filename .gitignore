@@ -74,7 +74,7 @@ htmlcov/
 *.dump
 *.sql.gz
 !closet_schema.sql
-db_closet/*
+db_closet/
 
 # uploaded / generated media (S3 in production)
 uploads/
