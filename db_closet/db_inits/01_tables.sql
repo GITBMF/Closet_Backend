@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS users(
     full_name VARCHAR,
     role INT, -- 4 = Admin, 3 = Livreur, 2 = Sourceur, 1 = Cliente
     city VARCHAR,
-    created_at TIMESTAMP DEFAULT NOW(),
+    created_at TIMESTAMP DEFAULT TO_CHAR(NOW(), 'DD-MM-YYYY HH24:MI:SS TZ'),
     updated_at TIMESTAMP,
 
     CONSTRAINT check_email_format CHECK (email LIKE '_%@_%._%'),
@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS items(
     story VARCHAR,
     size INT,
     item_status VARCHAR,
-    created_at TIMESTAMP DEFAULT NOW(),
+    created_at TIMESTAMP DEFAULT TO_CHAR(NOW(), 'DD-MM-YYYY HH24:MI:SS TZ'),
     updated_at TIMESTAMP,
 
     FOREIGN KEY (supplier_id) REFERENCES users(user_id) ON DELETE SET NULL,
@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS selections(
     guest_token VARCHAR,
     delivery_address VARCHAR,
     delivery_date TIMESTAMP,
-    created_at TIMESTAMP DEFAULT NOW(),
+    created_at TIMESTAMP DEFAULT TO_CHAR(NOW(), 'DD-MM-YYYY HH24:MI:SS TZ'),
     updated_at TIMESTAMP,
     
     FOREIGN KEY (client_id) REFERENCES users(user_id) ON DELETE SET NULL,
@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS order_item(
 CREATE TABLE IF NOT EXISTS suppliers(
     supplier_id UUID PRIMARY KEY,
     validated BOOLEAN,
-    request_datetime TIMESTAMP DEFAULT NOW(),
+    request_datetime TIMESTAMP DEFAULT TO_CHAR(NOW(), 'DD-MM-YYYY HH24:MI:SS TZ'),
     collab_type VARCHAR NOT NULL,
     supplier_since TIMESTAMP,
     updated_at TIMESTAMP,
@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS notifications(
     TEMPLATE VARCHAR,
     db_infos JSON,
     notif_status VARCHAR DEFAULT 'EN ATTENTE',
-    created_at TIMESTAMP DEFAULT NOW(),
+    created_at TIMESTAMP DEFAULT TO_CHAR(NOW(), 'DD-MM-YYYY HH24:MI:SS TZ'),
     error_message TEXT,
     updated_at TIMESTAMP,
 
@@ -113,8 +113,8 @@ CREATE TABLE IF NOT EXISTS deliveries(
     delivery_agent UUID,
     delivery_status VARCHAR DEFAULT 'PRISE EN CHARGE',
     access_token VARCHAR DEFAULT gen_random_uuid(),
-    token_expires_at TIMESTAMP DEFAULT NOW() + INTERVAL '7 days',
-    created_at TIMESTAMP DEFAULT NOW(),
+    token_expires_at TIMESTAMP DEFAULT TO_CHAR(NOW(), 'DD-MM-YYYY HH24:MI:SS TZ') + INTERVAL '7 days',
+    created_at TIMESTAMP DEFAULT TO_CHAR(NOW(), 'DD-MM-YYYY HH24:MI:SS TZ'),
     updated_at TIMESTAMP,
 
     FOREIGN KEY(selection_id) REFERENCES selections(selection_id) ON DELETE CASCADE,
@@ -131,7 +131,7 @@ CREATE TABLE IF NOT EXISTS pickups(
     additional_indications TEXT,
     pickup_date TIMESTAMP,
     pickup_status VARCHAR DEFAULT 'DEMANDE',
-    requested_at TIMESTAMP DEFAULT NOW(),
+    requested_at TIMESTAMP DEFAULT TO_CHAR(NOW(), 'DD-MM-YYYY HH24:MI:SS TZ'),
     updated_at TIMESTAMP,
 
     FOREIGN KEY(supplier_id) REFERENCES suppliers(supplier_id) ON DELETE CASCADE,
