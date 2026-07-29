@@ -68,6 +68,9 @@ class Permission(StrEnum):
     PAYOUT_READ_OWN = "payout:read:own"
     PAYOUT_MANAGE = "payout:manage"
 
+    # --- geo / delivery zones ---------------------------------------
+    GEO_MANAGE = "geo:manage"
+
     # --- delivery ----------------------------------------------------
     DELIVERY_MANAGE = "delivery:manage"
     DELIVERY_UPDATE_STATUS = "delivery:update:status"
