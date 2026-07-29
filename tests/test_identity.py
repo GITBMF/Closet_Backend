@@ -11,33 +11,11 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 
 from app.core.config import settings
-from app.core.database import AsyncSessionLocal, engine
-from app.db.registry import Base
+from app.core.database import AsyncSessionLocal
 from app.main import create_app
 from app.modules.identity.constants import UserRole
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
-
-
-@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
-async def _schema() -> AsyncGenerator[None, None]:
-    async with engine.begin() as conn:
-        await conn.execute(text("DROP SCHEMA public CASCADE"))
-        await conn.execute(text("CREATE SCHEMA public"))
-        # The PG enums are declared with create_type=False because the Alembic
-        # migration owns them; mirror that here so the two stay in step.
-        await conn.execute(
-            text("CREATE TYPE user_role AS ENUM ('customer','sourcer','courier','admin')")
-        )
-        await conn.execute(
-            text(
-                "CREATE TYPE actor_type AS ENUM "
-                "('customer','sourcer','admin','courier','system')"
-            )
-        )
-        await conn.run_sync(Base.metadata.create_all)
-    yield
-    await engine.dispose()
 
 
 @pytest_asyncio.fixture(loop_scope="session", autouse=True)
