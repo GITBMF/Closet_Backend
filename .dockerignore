@@ -18,4 +18,3 @@ codebase.part*.txt
 .env.*
 !.env.example
 docs
-scripts
