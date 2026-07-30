@@ -16,20 +16,40 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import RedirectResponse, Response
 from starlette_admin.auth import AdminUser, AuthProvider
 from starlette_admin.exceptions import FormValidationError, LoginFailed
 
 from app.core import security
+from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.modules.identity.constants import ActorType, AuditAction, UserRole
 from app.modules.identity.models import AuditLog, User
 
 SESSION_KEY = "ops_user_id"
+MFA_OK_KEY = "ops_mfa_ok"    # set only after a valid TOTP code THIS session
+
+
+# Route names that a partially-authenticated admin must reach WITHOUT passing
+# the full is_authenticated gate: the first-login onboarding pages and the
+# TOTP challenge. Starlette-Admin's AuthMiddleware guards every other route.
+ONBOARDING_ROUTE_NAMES = [
+    "ops-onboarding",
+    "ops-onboarding-password",
+    "ops-onboarding-mfa",
+    "ops-verify-2fa",
+]
 
 
 class OpsAuthProvider(AuthProvider):
     """Username = the administrator's e-mail address."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        # allow the onboarding + 2FA-challenge routes through the auth
+        # middleware; they do their own session checks internally.
+        existing = list(kwargs.pop("allow_routes", []) or [])
+        kwargs["allow_routes"] = existing + ONBOARDING_ROUTE_NAMES
+        super().__init__(*args, **kwargs)
 
     async def login(
         self,
@@ -62,14 +82,6 @@ class OpsAuthProvider(AuthProvider):
             if not user.is_active:
                 raise LoginFailed("Ce compte est désactivé.")
 
-            if user.must_change_password:
-                # The bootstrap/recovery password is single-use: the API holds
-                # such an account at /me + /me/password. Without this check the
-                # panel would be a way around that, with full CRUD.
-                raise LoginFailed(
-                    "Changez votre mot de passe via l'API avant d'accéder au panneau."
-                )
-
             if user.role is not UserRole.ADMIN:
                 # Correct password, wrong role: log it, it is worth knowing.
                 db.add(
@@ -97,7 +109,24 @@ class OpsAuthProvider(AuthProvider):
             )
             await db.commit()
 
-            request.session.update({SESSION_KEY: str(user.id)})
+            # Password is correct. Start a session but DO NOT trust it for the
+            # panel yet — mark 2FA as not-yet-passed for this login.
+            request.session.update({SESSION_KEY: str(user.id), MFA_OK_KEY: False})
+
+            # Decide where to send them:
+            #   1) must change a handed-out password  -> onboarding (step 1)
+            #   2) 2FA required but not yet enrolled   -> onboarding (step 2)
+            #   3) 2FA enrolled                        -> TOTP challenge
+            #   4) otherwise (2FA off)                 -> straight in
+            needs_password = user.must_change_password
+            needs_enrol = settings.ADMIN_REQUIRES_2FA and not user.mfa_enabled
+
+            if needs_password or needs_enrol:
+                return RedirectResponse("/ops/onboarding", status_code=302)
+            if user.mfa_enabled:
+                return RedirectResponse("/ops/verify-2fa", status_code=302)
+            # no 2FA in play at all: this login is fully authenticated
+            request.session[MFA_OK_KEY] = True
 
         return response
 
@@ -125,6 +154,17 @@ class OpsAuthProvider(AuthProvider):
         if user.must_change_password:
             # Re-checked per request, like the role: a flag set while a session
             # is open (e.g. an admin reset by the CLI) takes effect at once.
+            return False
+
+        # 2FA is a hard prerequisite. An admin without it enrolled is held out
+        # (they can still reach /ops/onboarding to enrol).
+        if settings.ADMIN_REQUIRES_2FA and not user.mfa_enabled:
+            return False
+
+        # Enrolled is not enough: they must have PASSED the TOTP challenge in
+        # THIS session. Distinguishes "2FA set up" (a DB fact) from "2FA proven
+        # this login" (a session fact) — a stolen cookie alone can't skip it.
+        if user.mfa_enabled and not request.session.get(MFA_OK_KEY):
             return False
 
         request.state.user = user

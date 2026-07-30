@@ -11,6 +11,7 @@ from app.api.router import api_router
 from app.core.config import settings
 from app.core.database import engine
 from app.core.exceptions import register_exception_handlers
+from app.db import registry as _registry  # noqa: F401 — registers all models/FKs
 from app.modules.identity.bootstrap import ensure_bootstrap_admin
 from app.ops.admin import mount_ops
 

@@ -10,6 +10,8 @@ from app.modules.geo.router import admin_router as geo_admin_router
 from app.modules.geo.router import router as geo_router
 from app.modules.identity.router import admin_router as identity_admin_router
 from app.modules.identity.router import router as identity_router
+from app.modules.orders.router import admin_router as orders_admin_router
+from app.modules.orders.router import router as orders_router
 
 api_router = APIRouter()
 api_router.include_router(identity_router, tags=["identity"])
@@ -28,3 +30,7 @@ api_router.include_router(pricing_admin_router)
 # catalogue (pieces, media, vocab, wishlist, publication)
 api_router.include_router(catalogue_router)
 api_router.include_router(catalogue_admin_router)
+
+# orders (checkout, tracking, lifecycle)
+api_router.include_router(orders_router)
+api_router.include_router(orders_admin_router)
