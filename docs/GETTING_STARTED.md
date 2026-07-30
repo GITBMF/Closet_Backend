@@ -12,6 +12,7 @@ Everything needed to run the ClosET backend, in whichever setup suits you.
     - [Mode D — staging / production on a VPS](#mode-d--staging--production-on-a-vps)
   - [4. Environment variables](#4-environment-variables)
   - [5. Database \& migrations](#5-database--migrations)
+  - [5b. Media storage (MinIO in dev)](#5b-media-storage-minio-in-dev)
   - [6. Tests](#6-tests)
   - [7. Creating administrators](#7-creating-administrators)
     - [Option A — automatic, on first launch (recommended for deployment)](#option-a--automatic-on-first-launch-recommended-for-deployment)
@@ -54,11 +55,11 @@ Now edit `.env.dev` and set two values properly:
 
 ```bash
 # a real password, not "change_me"
-POSTGRES_PASSWORD=<something long>
+POSTGRES_PASSWORD=<redacted>
 
 # generate a real secret:
 python3 -c "import secrets; print(secrets.token_urlsafe(48))"
-JWT_SECRET=<paste it here>
+JWT_SECRET=<redacted>
 ```
 
 `.env.dev`, `.env.staging` and `.env.prod` are git-ignored. **Never commit them.** If a credential ever reaches a commit, rotate it — assume it is public.
@@ -153,6 +154,16 @@ Everything is read by `app/core/config.py` through `pydantic-settings`; nothing 
 | `ADMIN_REQUIRES_2FA` | `true` | administrators cannot disable TOTP |
 | `TOTP_ISSUER` | `ClosET` | label shown in the authenticator app |
 | `CORS_ORIGINS` | `["*"]` | restrict in production |
+| `STORAGE_PROVIDER` | `s3` | media storage backend (only `s3` today) |
+| `S3_ENDPOINT_URL` | `http://localhost:9000` | MinIO in dev; **blank** for real AWS S3 |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | `minioadmin` | storage credentials |
+| `S3_BUCKET` | `closet-media` | bucket that holds piece images |
+| `S3_PUBLIC_BASE_URL` | `http://localhost:9000/closet-media` | how clients reach stored images |
+| `S3_FORCE_PATH_STYLE` | `true` | `true` for MinIO/R2; `false` for AWS S3 |
+| `MEDIA_MAX_BYTES` | `5242880` | max upload size (5 MB) |
+| `MEDIA_ALLOWED_TYPES` | jpeg/png/webp | accepted image content types |
+
+To point at production storage, set `S3_ENDPOINT_URL` blank (AWS S3) or to your provider's endpoint (Cloudflare R2), update the keys/bucket, and set `S3_PUBLIC_BASE_URL` to the CDN or bucket URL. No code changes — the storage provider is swappable by configuration.
 
 ---
 
@@ -180,18 +191,41 @@ make reset-db      # drops the docker volume, recreates, re-migrates
 
 ---
 
+## 5b. Media storage (MinIO in dev)
+
+Product images live in **S3-compatible object storage**, not in the database — `piece_media.url` holds only the URL. In development this is **MinIO**, started for you by Docker.
+
+`make up` (or `docker compose --env-file .env.dev up -d`) brings up three storage-related pieces:
+
+- **`minio`** — the S3-compatible server, API on <http://localhost:9000>, web console on <http://localhost:9001> (log in with `S3_ACCESS_KEY` / `S3_SECRET_KEY`, default `minioadmin` / `minioadmin`).
+- **`minio_init`** — a one-shot container that creates the `closet-media` bucket and makes it publicly readable, then exits. Seeing it exit is normal.
+
+If you run the API on the host (Mode A) but MinIO in Docker, that works unchanged — `S3_ENDPOINT_URL=http://localhost:9000` reaches the container's published port.
+
+**Uploading an image** (admin only): the client sends the file as `multipart/form-data`; the backend validates type and size, uploads to storage, and stores the generated URL. The client never constructs a URL.
+
+```bash
+curl -X POST http://localhost:8000/api/v1/admin/pieces/<piece_id>/media \
+  -H "Authorization: Bearer <admin-token>" \
+  -F "file=@jacket.jpg" -F "view_label=front"
+```
+
+**In production**, drop the `minio` service and point `S3_*` at real storage (AWS S3 or Cloudflare R2) — see the environment-variables table above. Nothing in the code changes.
+
+---
+
 ## 6. Tests
 
 The suite runs against a **real PostgreSQL** database — no SQLite substitute, because the schema uses PostgreSQL enums, `JSONB` and `INET`.
 
 ```bash
 docker compose --env-file .env.dev up -d postgres   # database must be running
-pytest -q                                            # 34 tests
+pytest -q                                            # 88 tests
 pytest -q tests/test_identity.py::TestRBAC           # one class
 pytest -q -k "mfa" -v                                # by keyword
 ```
 
-The suite creates its schema, truncates between tests and cleans up after itself. It uses the database named in `.env.dev`, so point it at a scratch database if you keep data you care about.
+The suite creates its schema, truncates between tests and cleans up after itself. It uses the database named in `.env.dev`, so point it at a scratch database if you keep data you care about. Media tests use an in-memory storage stub, so **MinIO does not need to be running** for `pytest`.
 
 Inside Docker: `docker compose exec api pytest -q`.
 
@@ -208,7 +242,7 @@ Set both values in the environment file **before** the first start:
 
 ```bash
 BOOTSTRAP_ADMIN_EMAIL=admin@closet.cm
-BOOTSTRAP_ADMIN_PASSWORD=<a long single-use password>
+BOOTSTRAP_ADMIN_PASSWORD=<redacted>
 BOOTSTRAP_ADMIN_NAME=Admin ClosET
 ```
 

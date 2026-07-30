@@ -2,6 +2,8 @@
 
 from fastapi import APIRouter
 
+from app.modules.catalogue.router import admin_router as catalogue_admin_router
+from app.modules.catalogue.router import router as catalogue_router
 from app.modules.delivery_pricing.router import admin_router as pricing_admin_router
 from app.modules.delivery_pricing.router import router as pricing_router
 from app.modules.geo.router import admin_router as geo_admin_router
@@ -22,3 +24,7 @@ api_router.include_router(geo_admin_router)
 # delivery-pricing (quote engine + rate management)
 api_router.include_router(pricing_router)
 api_router.include_router(pricing_admin_router)
+
+# catalogue (pieces, media, vocab, wishlist, publication)
+api_router.include_router(catalogue_router)
+api_router.include_router(catalogue_admin_router)

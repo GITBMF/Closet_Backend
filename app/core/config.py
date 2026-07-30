@@ -65,6 +65,20 @@ class Settings(BaseSettings):
     OPS_SESSION_SECRET: str = ""      # falls back to JWT_SECRET
     OPS_LOGO_URL: str = ""
 
+    # ---- media storage (S3-compatible: MinIO dev, S3/R2 prod) --------
+    STORAGE_PROVIDER: str = "s3"
+    S3_ENDPOINT_URL: str = "http://localhost:9000"   # blank for real AWS S3
+    S3_REGION: str = "us-east-1"
+    S3_ACCESS_KEY: str = "minioadmin"
+    S3_SECRET_KEY: str = "minioadmin"
+    S3_BUCKET: str = "closet-media"
+    S3_PUBLIC_BASE_URL: str = "http://localhost:9000/closet-media"
+    S3_FORCE_PATH_STYLE: bool = True   # MinIO needs path-style; AWS S3 doesn't
+    MEDIA_MAX_BYTES: int = 5 * 1024 * 1024   # 5 MB
+    MEDIA_ALLOWED_TYPES: list[str] = Field(
+        default_factory=lambda: ["image/jpeg", "image/png", "image/webp"]
+    )
+
     # ---- misc --------------------------------------------------------
     CORS_ORIGINS: list[str] = Field(default_factory=lambda: ["*"])
 
