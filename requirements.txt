@@ -19,6 +19,7 @@ python-multipart==0.0.32  # required by FastAPI for form / file uploads
 pyotp==2.10.0
 starlette-admin==0.17.1  # internal /ops panel
 itsdangerous==2.2.0  # signed session cookie for /ops
+segno==1.6.6
 
 # --- dev / test ---
 httpx==0.28.1  # test client

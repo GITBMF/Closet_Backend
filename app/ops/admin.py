@@ -13,10 +13,13 @@ from __future__ import annotations
 
 from starlette.middleware import Middleware
 from starlette.middleware.sessions import SessionMiddleware
+from starlette_admin import PasswordField
 from starlette_admin.contrib.sqla import Admin, ModelView
+from starlette_admin.exceptions import FormValidationError
 
 from app.core.config import settings
 from app.core.database import engine
+from app.core.security import hash_password
 from app.modules.identity.models import (
     AuditLog,
     DeviceToken,
@@ -25,6 +28,7 @@ from app.modules.identity.models import (
     User,
 )
 from app.ops.auth import OpsAuthProvider
+from app.ops.onboarding import onboarding_routes
 
 
 class UserView(ModelView):
@@ -33,23 +37,83 @@ class UserView(ModelView):
     label = "Utilisateurs"
     icon = "fa fa-users"
 
+    # A write-only "password" input appears on the create/edit forms. It is
+    # never read back from the database (password_hash is never exposed); on
+    # save it is hashed into password_hash by before_create / before_edit.
     fields = [
         "id", "email", "full_name", "phone", "city", "role",
+        PasswordField(
+            "password",
+            label="Mot de passe",
+            help_text="Laisser vide pour ne pas changer (à la modification).",
+            exclude_from_list=True,
+            exclude_from_detail=True,
+        ),
         "is_active", "must_change_password", "totp_enabled_at",
         "failed_login_count", "locked_until", "last_login_at",
         "created_at", "deleted_at",
     ]
     exclude_fields_from_list = ["id", "city", "totp_enabled_at", "deleted_at"]
     exclude_fields_from_create = [
-        "failed_login_count", "locked_until", "last_login_at", "deleted_at"
+        "failed_login_count", "locked_until", "last_login_at", "deleted_at",
+        "totp_enabled_at", "created_at",
+        # is_active is forced True in before_create; hide it here so an
+        # unchecked checkbox can't create an inactive account
+        "is_active",
+    ]
+    exclude_fields_from_edit = [
+        "failed_login_count", "locked_until", "last_login_at", "deleted_at",
+        "totp_enabled_at", "created_at",
     ]
     searchable_fields = ["email", "full_name", "phone"]
     sortable_fields = ["email", "full_name", "role", "created_at", "last_login_at"]
     fields_default_sort = [("created_at", True)]
 
-    # password_hash and totp_secret are absent from `fields` on purpose:
-    # the panel must never display or edit a credential.
+    # ------------------------------------------------------------------ hooks
+    async def before_create(self, request, data, obj) -> None:
+        """Hash the typed password into password_hash; require one on create.
 
+        An admin created here must be able to log in, so a password is
+        mandatory. New admins are flagged must_change_password so the person
+        sets their own on first login, and they enrol their own 2FA via
+        /api/v1/me/mfa/setup afterwards.
+        """
+        raw = (data.get("password") or "").strip()
+        if not raw:
+            raise FormValidationError({"password": "Mot de passe requis."})
+        self._validate_password(raw)
+        obj.password_hash = hash_password(raw)
+        # a freshly created account must rotate the password it was handed
+        obj.must_change_password = True
+        # new accounts are active by default (the create form no longer shows
+        # is_active, so it can't be left unchecked into an inactive account)
+        obj.is_active = True
+
+    async def before_edit(self, request, data, obj) -> None:
+        """Hash a new password only if one was typed; blank = leave unchanged."""
+        raw = (data.get("password") or "").strip()
+        if raw:
+            self._validate_password(raw)
+            obj.password_hash = hash_password(raw)
+            obj.must_change_password = True
+
+    @staticmethod
+    def _validate_password(raw: str) -> None:
+        if len(raw) < 8:
+            raise FormValidationError(
+                {"password": "Au moins 8 caractères."}
+            )
+        if raw.encode("utf-8").__len__() > 72:
+            raise FormValidationError(
+                {"password": "Trop long (72 octets maximum)."}
+            )
+        if not (any(c.isalpha() for c in raw) and any(c.isdigit() for c in raw)):
+            raise FormValidationError(
+                {"password": "Doit contenir des lettres et des chiffres."}
+            )
+
+    # password_hash and totp_secret are still absent from `fields`: the panel
+    # never displays or edits a stored credential — only accepts a new one.
 
 class RefreshTokenView(ModelView):
     identity = "refresh-token"
@@ -168,5 +232,10 @@ def mount_ops(app) -> bool:  # noqa: ANN001
             "Restrict access first (VPN / IP allow-list / SSH tunnel)."
         )
 
-    build_admin().mount_to(app)
+    admin = build_admin()
+    # Onboarding + 2FA-challenge pages must live INSIDE the admin sub-app so
+    # they share its SessionMiddleware and are covered by the provider's
+    # allow_routes (otherwise AuthMiddleware bounces them to /ops/login).
+    admin.routes.extend(onboarding_routes)
+    admin.mount_to(app)
     return True
