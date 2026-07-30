@@ -1,7 +1,7 @@
 # ClosET — Backend API
 
 Backend for **ClosET · L'élégance durable** — a premium second-hand fashion platform (Cameroon).
-FastAPI · PostgreSQL 18 · SQLAlchemy 2 (async) · Alembic · Docker.
+FastAPI · PostgreSQL 18 · SQLAlchemy 2 (async) · Alembic · S3-compatible object storage · Docker.
 
 The API serves three clients: the Flutter application (customer + sourcer areas), the Next.js administrator back office, and the courier's signed-link page.
 
@@ -16,7 +16,7 @@ cp .env.example .env.dev        # then edit POSTGRES_PASSWORD and JWT_SECRET
 make up
 ```
 
-The API is on <http://localhost:8000>, interactive documentation on <http://localhost:8000/docs>.
+The API is on <http://localhost:8000>, interactive documentation on <http://localhost:8000/docs>. `make up` also starts **MinIO** (object storage for images) on <http://localhost:9000>, with its console on <http://localhost:9001>.
 
 Not using `make`? See **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)** — it covers every setup mode (hybrid, full Docker, fully local), migrations, tests, creating the first administrator, and troubleshooting.
 
@@ -27,9 +27,16 @@ Not using `make`? See **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)** —
 | Module | Status |
 |---|---|
 | **identity** — accounts, login, sessions, 2FA, roles & permissions, audit log | ✅ done ([details](README_IDENTITY.md)) |
-| geo · catalogue · orders · payments · delivery · sourcing · privileges · showcasing · returns · notifications · dashboard | planned |
+| **geo** — regions, divisions, subdivisions, delivery-zone cities & neighbourhoods | ✅ done |
+| **delivery-pricing** — the quote engine (city → region → quote-required) and rate management | ✅ done |
+| **catalogue** — pieces, media upload, houses/universes, wishlist, search, publication batches | ✅ done |
+| orders · payments · delivery · sourcing · privileges · showcasing · returns · notifications · dashboard | planned |
+
+The full 44-table schema for **all** modules is already migrated (`alembic/versions/0003_full_schema.py`), so every developer builds against stable, shared tables. The modules above marked *planned* have their models in place; what remains is each module's router/service/repository.
 
 Authentication is **e-mail + password**, with optional TOTP two-factor (mandatory for administrators). Google Sign-In and e-mail verification are deliberately **not** in this version.
+
+Product **images** are stored in S3-compatible object storage (MinIO in development; AWS S3 / Cloudflare R2 in production) behind a swappable provider interface — the client uploads a file and the backend generates and stores the URL.
 
 ---
 
@@ -38,6 +45,7 @@ Authentication is **e-mail + password**, with optional TOTP two-factor (mandator
 ```text
 app/
   core/         config, database session, security primitives, error mapping
+  core/storage/ swappable object-storage providers (S3/MinIO) for media
   db/           declarative base, mixins, model registry for Alembic
   api/          router assembly under /api/v1
   modules/      one folder per business domain (identity, catalogue, orders, …)
