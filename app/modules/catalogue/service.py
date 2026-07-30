@@ -318,6 +318,14 @@ class CatalogueService:
         await self.repo.remove_wishlist(user_id, piece_id)
         await self.repo.db.commit()
 
+    async def get_piece_for_order(self, piece_id: uuid.UUID):
+        """Read a piece for order snapshotting (title/price/status/currency).
+
+        Returns the Piece or None. Called by the orders module — a plain read
+        that does not commit.
+        """
+        return await self.repo.get_piece(piece_id)
+
     # =======================================================================
     # Cross-module contracts — called by OTHER modules through this service.
     # =======================================================================
