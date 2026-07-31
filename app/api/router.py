@@ -4,6 +4,8 @@ from fastapi import APIRouter
 
 from app.modules.catalogue.router import admin_router as catalogue_admin_router
 from app.modules.catalogue.router import router as catalogue_router
+from app.modules.delivery.router import admin_router as delivery_admin_router
+from app.modules.delivery.router import courier_router as delivery_courier_router
 from app.modules.delivery_pricing.router import admin_router as pricing_admin_router
 from app.modules.delivery_pricing.router import router as pricing_router
 from app.modules.geo.router import admin_router as geo_admin_router
@@ -37,6 +39,10 @@ api_router.include_router(catalogue_admin_router)
 api_router.include_router(orders_router)
 api_router.include_router(orders_admin_router)
 
-# payments (initiate, poll, CinetPay webhook, admin reconcile/refund)
+# payments (initiate, webhook, admin reconcile/refund)
 api_router.include_router(payments_router)
 api_router.include_router(payments_admin_router)
+
+# delivery (courier assignment, signed courier link, status/events)
+api_router.include_router(delivery_admin_router)
+api_router.include_router(delivery_courier_router)

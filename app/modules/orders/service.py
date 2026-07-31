@@ -317,6 +317,43 @@ class OrderService:
         )
         await self.db.commit()
         return await self.repo.get(order_id, with_items=True)
+    
+    
+    async def sync_from_delivery(
+        self, order_id: uuid.UUID, delivery_status: str
+    ) -> None:
+        """Advance the order to track delivery progress.
+
+        Called by the delivery module (never the other way round). Delivery owns
+        its own status machine; orders owns its own. This maps a delivery status
+        onto the order status and applies it through the normal transition
+        rules — an illegal jump is simply skipped, so delivery can call this
+        idempotently without knowing the order's exact current state.
+        """
+        mapping = {
+            "picked_up": OrderStatus.DELIVERING,
+            "in_transit": OrderStatus.DELIVERING,
+            "delivered": OrderStatus.COMPLETED,
+        }
+        target = mapping.get(delivery_status)
+        if target is None:
+            return
+        order = await self.repo.get(order_id, with_items=True)
+        if order is None:
+            raise NotFoundError("Commande introuvable.", code="order_not_found")
+        if order.status is target:
+            return
+        if target not in _TRANSITIONS[order.status]:
+            # e.g. already COMPLETED, or a repeat "in_transit" after DELIVERING —
+            # nothing to do; delivery status is the source of truth for itself.
+            return
+        await self._record_transition(
+            order, target,
+            actor_type=ActorType.COURIER, actor_id=None,
+            reason=f"delivery {delivery_status}",
+        )
+        # NOTE: caller (delivery service) owns the commit so its delivery write
+        # and this order transition land in one transaction.
 
     async def cancel(
         self, order_id: uuid.UUID, *, reason: str, actor_type: ActorType = ActorType.SYSTEM
