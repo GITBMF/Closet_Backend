@@ -12,6 +12,7 @@ from app.modules.geo.router import admin_router as geo_admin_router
 from app.modules.geo.router import router as geo_router
 from app.modules.identity.router import admin_router as identity_admin_router
 from app.modules.identity.router import router as identity_router
+from app.modules.notifications.router import admin_router as notifications_admin_router
 from app.modules.orders.router import admin_router as orders_admin_router
 from app.modules.orders.router import router as orders_router
 from app.modules.payments.router import admin_router as payments_admin_router
@@ -46,3 +47,6 @@ api_router.include_router(payments_admin_router)
 # delivery (courier assignment, signed courier link, status/events)
 api_router.include_router(delivery_admin_router)
 api_router.include_router(delivery_courier_router)
+
+# notifications (admin template management + dispatch log)
+api_router.include_router(notifications_admin_router)
