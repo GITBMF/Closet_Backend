@@ -12,6 +12,8 @@ from app.modules.identity.router import admin_router as identity_admin_router
 from app.modules.identity.router import router as identity_router
 from app.modules.orders.router import admin_router as orders_admin_router
 from app.modules.orders.router import router as orders_router
+from app.modules.payments.router import admin_router as payments_admin_router
+from app.modules.payments.router import router as payments_router
 
 api_router = APIRouter()
 api_router.include_router(identity_router, tags=["identity"])
@@ -34,3 +36,7 @@ api_router.include_router(catalogue_admin_router)
 # orders (checkout, tracking, lifecycle)
 api_router.include_router(orders_router)
 api_router.include_router(orders_admin_router)
+
+# payments (initiate, poll, CinetPay webhook, admin reconcile/refund)
+api_router.include_router(payments_router)
+api_router.include_router(payments_admin_router)
