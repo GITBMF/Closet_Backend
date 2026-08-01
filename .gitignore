@@ -202,3 +202,4 @@ parse.py
 codebase.txt
 codebase.part*.txt
 *.export.txt
+render.env
