@@ -1,4 +1,4 @@
-"""Showcasing enums."""
+"""Showcasing enums — must match the DB enum `featured_slot_type`."""
 
 from __future__ import annotations
 
