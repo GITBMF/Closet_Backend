@@ -1,19 +1,27 @@
+"""Showcasing dependencies.
+
+The service resolves featured pieces through the catalogue SERVICE, built on the
+same request session — so a single request reads sponsors, slots and pieces
+consistently.
+"""
+
+from __future__ import annotations
+
+from typing import Annotated
+
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.modules.catalogue.dependencies import get_catalogue_service
 from app.modules.showcasing.repository import ShowcasingRepository
 from app.modules.showcasing.service import ShowcasingService
-from app.modules.catalogue.repository import CatalogueRepository
-
-
-def get_showcasing_repository(db: AsyncSession = Depends(get_db)) -> ShowcasingRepository:
-    return ShowcasingRepository(db)
 
 
 def get_showcasing_service(
-    repo: ShowcasingRepository = Depends(get_showcasing_repository),
-    db: AsyncSession = Depends(get_db)
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ShowcasingService:
-    catalogue_repo = CatalogueRepository(db)
-    return ShowcasingService(repo=repo, catalogue_repo=catalogue_repo)
+    return ShowcasingService(ShowcasingRepository(db), get_catalogue_service(db))
+
+
+Service = Annotated[ShowcasingService, Depends(get_showcasing_service)]

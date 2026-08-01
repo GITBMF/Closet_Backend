@@ -1,14 +1,11 @@
-"""Constants relative au module Showcasing."""
+"""Showcasing enums — must match the DB enum `featured_slot_type`."""
 
-# Types de slots mis en avant
-SLOT_TYPE_HERO_BANNER = "hero_banner"
-SLOT_TYPE_HOME_GRID = "home_grid"
-SLOT_TYPE_SIDEBAR = "sidebar"
-SLOT_TYPE_CATEGORY_FEATURED = "category_featured"
+from __future__ import annotations
 
-VALID_SLOT_TYPES = [
-    SLOT_TYPE_HERO_BANNER,
-    SLOT_TYPE_HOME_GRID,
-    SLOT_TYPE_SIDEBAR,
-    SLOT_TYPE_CATEGORY_FEATURED,
-]
+from enum import StrEnum
+
+
+class FeaturedSlotType(StrEnum):
+    PIECE_OF_THE_WEEK = "piece_of_the_week"
+    FAVOURITE = "favourite"
+    HERO = "hero"

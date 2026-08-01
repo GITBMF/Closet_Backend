@@ -1,18 +1,32 @@
+"""Showcasing API contracts.
+
+Featured slots resolve their piece through the catalogue's real read shape
+(PieceSummary) — showcasing does not define its own piece schema.
+"""
+
+from __future__ import annotations
+
+import uuid
 from datetime import datetime
-from typing import List, Optional
-from uuid import UUID
+
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.modules.catalogue.schemas import PieceResponse
+from app.modules.catalogue.schemas import PieceSummary
+from app.modules.showcasing.constants import FeaturedSlotType
 
 
-# --- Sponsor Schemas ---
+class _ORM(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ------------------------------------------------------------- sponsors
 class SponsorBase(BaseModel):
-    name: str
-    logo_url: str
-    link_url: Optional[str] = None
-    starts_at: Optional[datetime] = None
-    ends_at: Optional[datetime] = None
+    name: str = Field(min_length=1, max_length=150)
+    logo_url: str | None = Field(default=None, max_length=500)
+    link_url: str | None = Field(default=None, max_length=500)
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    position: int = 0
     is_active: bool = True
 
 
@@ -21,50 +35,58 @@ class SponsorCreate(SponsorBase):
 
 
 class SponsorUpdate(BaseModel):
-    name: Optional[str] = None
-    logo_url: Optional[str] = None
-    link_url: Optional[str] = None
-    starts_at: Optional[datetime] = None
-    ends_at: Optional[datetime] = None
-    is_active: Optional[bool] = None
+    name: str | None = Field(default=None, min_length=1, max_length=150)
+    logo_url: str | None = Field(default=None, max_length=500)
+    link_url: str | None = Field(default=None, max_length=500)
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    position: int | None = None
+    is_active: bool | None = None
 
 
-class SponsorResponse(SponsorBase):
-    id: UUID
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-# --- Featured Slot Schemas ---
-class FeaturedSlotBase(BaseModel):
-    slot_type: str
-    piece_id: UUID
-    position: int = 0
-    starts_at: Optional[datetime] = None
-    ends_at: Optional[datetime] = None
+class SponsorOut(_ORM):
+    id: uuid.UUID
+    name: str
+    logo_url: str | None
+    link_url: str | None
+    starts_at: datetime | None
+    ends_at: datetime | None
+    position: int
+    is_active: bool
 
 
-class FeaturedSlotCreate(FeaturedSlotBase):
-    pass
+# -------------------------------------------------------- featured slots
+class FeaturedSlotCreate(BaseModel):
+    slot: FeaturedSlotType
+    piece_id: uuid.UUID
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
 
 
 class FeaturedSlotUpdate(BaseModel):
-    slot_type: Optional[str] = None
-    piece_id: Optional[UUID] = None
-    position: Optional[int] = None
-    starts_at: Optional[datetime] = None
-    ends_at: Optional[datetime] = None
+    slot: FeaturedSlotType | None = None
+    piece_id: uuid.UUID | None = None
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
 
 
-class FeaturedSlotResponse(FeaturedSlotBase):
+class FeaturedSlotOut(_ORM):
     id: int
-    created_by: Optional[UUID] = None
-    piece: Optional[PieceResponse] = None  # Inclusion de la pièce lue depuis Catalogue
+    slot: FeaturedSlotType
+    piece_id: uuid.UUID
+    starts_at: datetime | None
+    ends_at: datetime | None
+    created_by: uuid.UUID | None
+    created_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+
+class FeaturedSlotWithPiece(FeaturedSlotOut):
+    """Public/admin view: the slot plus the resolved catalogue piece."""
+
+    piece: PieceSummary | None = None
 
 
-# --- Home Showcase Combined Schema ---
-class HomeShowcaseResponse(BaseModel):
-    sponsors: List[SponsorResponse]
-    featured_slots: List[FeaturedSlotResponse]
+# --------------------------------------------------------- combined home
+class HomeShowcase(BaseModel):
+    sponsors: list[SponsorOut]
+    featured: list[FeaturedSlotWithPiece]
