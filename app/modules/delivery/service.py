@@ -48,6 +48,8 @@ from app.modules.delivery.schemas import (
     LinkIn,
 )
 from app.modules.orders.constants import OrderStatus
+from app.modules.notifications.constants import NotificationChannel
+from app.modules.notifications.hook import Notifier, send_notification
 from app.modules.orders.service import OrderService
 
 # delivery statuses that count as "the courier has the parcel in hand"
@@ -55,9 +57,23 @@ _PICKED = {DeliveryStatus.PICKED_UP, DeliveryStatus.IN_TRANSIT}
 
 
 class DeliveryService:
-    def __init__(self, repo: DeliveryRepository, orders: OrderService) -> None:
+    def __init__(
+        self, repo: DeliveryRepository, orders: OrderService,
+        notifier: Notifier = send_notification,
+    ) -> None:
         self.repo = repo
         self.orders = orders
+        self._notify = notifier
+
+    async def _safe_notify(self, *args, **kwargs) -> None:
+        """Never let a notifier failure break a delivery flow."""
+        try:
+            await self._notify(*args, **kwargs)
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger("closet.delivery").warning(
+                "notification suppressed during delivery flow", exc_info=True
+            )
 
     @property
     def db(self):
@@ -257,6 +273,25 @@ class DeliveryService:
         )
         # mirror onto the order (orders applies its own rules; illegal -> no-op)
         await self.orders.sync_from_delivery(delivery.purchase_id, target.value)
+
+        # tell the customer on the meaningful transitions (own session, never raises)
+        _CUSTOMER_MSG = {
+            DeliveryStatus.PICKED_UP: "order.delivering",
+            DeliveryStatus.DELIVERED: "order.delivered",
+        }
+        code = _CUSTOMER_MSG.get(target)
+        if code is not None:
+            _, purchase = await self.repo.get_delivery_with_purchase(delivery.id)
+            if purchase is not None:
+                await self._safe_notify(
+                    code,
+                    channel=NotificationChannel.WHATSAPP,
+                    to_phone=purchase.customer_phone,
+                    context={
+                        "customer_name": purchase.customer_name,
+                        "order_number": purchase.order_number,
+                    },
+                )
 
     async def _require(self, delivery_id: uuid.UUID) -> Delivery:
         delivery = await self.repo.get(delivery_id)
