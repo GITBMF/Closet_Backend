@@ -348,6 +348,14 @@ class CatalogueService:
         """Finalize a piece as sold (payment confirmed)."""
         await self.repo.mark_sold(piece_id)
 
+    async def restock(self, piece_id: uuid.UUID) -> None:
+        """Put a returned piece back on sale (SOLD -> published).
+
+        Called by the returns module when an approved return is resolved and the
+        item has been received back. Caller owns the commit.
+        """
+        await self.repo.restock(piece_id)
+
     async def create_from_submission(
         self,
         *,
