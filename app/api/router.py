@@ -17,6 +17,8 @@ from app.modules.orders.router import admin_router as orders_admin_router
 from app.modules.orders.router import router as orders_router
 from app.modules.payments.router import admin_router as payments_admin_router
 from app.modules.payments.router import router as payments_router
+from app.modules.returns.router import admin_router as returns_admin_router
+from app.modules.returns.router import router as returns_router
 from app.modules.showcasing.router import admin_router as showcasing_admin_router
 from app.modules.showcasing.router import router as showcasing_router
 from app.modules.sourcing.router import admin_router as sourcing_admin_router
@@ -55,6 +57,10 @@ api_router.include_router(orders_admin_router)
 # payments (initiate, webhook, admin reconcile/refund)
 api_router.include_router(payments_router)
 api_router.include_router(payments_admin_router)
+
+# returns (customer return requests + admin review/refund/restock)
+api_router.include_router(returns_router)
+api_router.include_router(returns_admin_router)
 
 # delivery (courier assignment, signed courier link, status/events)
 api_router.include_router(delivery_admin_router)

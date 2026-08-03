@@ -267,3 +267,11 @@ class CatalogueRepository:
             .where(Piece.id == piece_id)
             .values(status=PieceStatus.SOLD)
         )
+
+    async def restock(self, piece_id: uuid.UUID) -> None:
+        """Return a SOLD piece to published (a resolved customer return)."""
+        await self.db.execute(
+            Piece.__table__.update()
+            .where(Piece.id == piece_id, Piece.status == PieceStatus.SOLD)
+            .values(status=PieceStatus.PUBLISHED)
+        )
