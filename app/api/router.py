@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from app.modules.catalogue.router import admin_router as catalogue_admin_router
 from app.modules.catalogue.router import router as catalogue_router
+from app.modules.dashboard.router import admin_router as dashboard_admin_router
 from app.modules.delivery.router import admin_router as delivery_admin_router
 from app.modules.delivery.router import courier_router as delivery_courier_router
 from app.modules.delivery_pricing.router import admin_router as pricing_admin_router
@@ -68,3 +69,6 @@ api_router.include_router(delivery_courier_router)
 
 # notifications (admin template management + dispatch log)
 api_router.include_router(notifications_admin_router)
+
+# dashboard (admin KPI endpoints, read-only over v_dashboard_* views)
+api_router.include_router(dashboard_admin_router)
