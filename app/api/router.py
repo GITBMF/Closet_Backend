@@ -19,6 +19,8 @@ from app.modules.payments.router import admin_router as payments_admin_router
 from app.modules.payments.router import router as payments_router
 from app.modules.showcasing.router import admin_router as showcasing_admin_router
 from app.modules.showcasing.router import router as showcasing_router
+from app.modules.sourcing.router import admin_router as sourcing_admin_router
+from app.modules.sourcing.router import router as sourcing_router
 
 api_router = APIRouter()
 api_router.include_router(identity_router, tags=["identity"])
@@ -41,6 +43,10 @@ api_router.include_router(catalogue_admin_router)
 # showcasing (curated storefront: sponsors + featured slots)
 api_router.include_router(showcasing_router)
 api_router.include_router(showcasing_admin_router)
+
+# sourcing (supplier applications, submissions, review, catalogue-in)
+api_router.include_router(sourcing_router)
+api_router.include_router(sourcing_admin_router)
 
 # orders (checkout, tracking, lifecycle)
 api_router.include_router(orders_router)

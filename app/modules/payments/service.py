@@ -37,6 +37,8 @@ from app.modules.payments.providers.base import (
     PaymentProvider,
     PaymentProviderError,
 )
+from app.modules.notifications.constants import NotificationChannel
+from app.modules.notifications.hook import Notifier, send_notification
 from app.modules.payments.repository import PaymentRepository
 from app.modules.payments.schemas import InitiateIn, ReconcileIn, RefundIn
 
@@ -57,6 +59,7 @@ class PaymentService:
         currency: str,
         return_url: str,
         notify_url: str,
+        notifier: Notifier = send_notification,
     ) -> None:
         self.repo = repo
         self.orders = orders
@@ -64,6 +67,18 @@ class PaymentService:
         self.currency = currency
         self.return_url = return_url
         self.notify_url = notify_url
+        self._notify = notifier
+
+    async def _safe_notify(self, *args, **kwargs) -> None:
+        """Never let a notifier failure break a payment flow, whatever notifier
+        was injected (the default hook is already safe; a custom one may not be)."""
+        try:
+            await self._notify(*args, **kwargs)
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger("closet.payments").warning(
+                "notification suppressed during payment flow", exc_info=True
+            )
 
     @property
     def db(self):
@@ -215,15 +230,36 @@ class PaymentService:
             payment.status = PaymentStatus.SUCCEEDED
             payment.confirmed_at = datetime.now(UTC)
             # drive the order: PENDING -> PAID, sells the reserved pieces
-            await self.orders.mark_paid(payment.purchase_id)
+            order = await self.orders.mark_paid(payment.purchase_id)
+            # tell the customer (own session, never raises)
+            await self._safe_notify(
+                "order.paid",
+                channel=NotificationChannel.WHATSAPP,
+                to_phone=order.customer_phone,
+                context={
+                    "customer_name": order.customer_name,
+                    "order_number": order.order_number,
+                },
+            )
         elif status is PaymentStatus.FAILED:
             payment.status = PaymentStatus.FAILED
             # release the held pieces so the order doesn't sit on stock
-            await self.orders.cancel(
+            order = await self.orders.cancel(
                 payment.purchase_id,
                 reason="payment failed",
                 actor_type=ActorType.SYSTEM,
             )
+            # tell the customer (own session, never raises)
+            if order is not None:
+                await self._safe_notify(
+                    "order.cancelled",
+                    channel=NotificationChannel.WHATSAPP,
+                    to_phone=order.customer_phone,
+                    context={
+                        "customer_name": order.customer_name,
+                        "order_number": order.order_number,
+                    },
+                )
         else:
             payment.status = PaymentStatus.PENDING
 
