@@ -17,6 +17,12 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      # publish the container so host-run alembic / uvicorn can reach it.
+      # host 5432 -> container 5432. If a native PostgreSQL already occupies
+      # host 5432, either stop it, or change the host side here to 5433 and
+      # set POSTGRES_PORT=5433 in .env.dev.
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - db_closet:/var/lib/postgresql
     healthcheck:
@@ -25,6 +31,44 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+    networks: [closet_net]
+
+  # S3-compatible object storage for media (dev only). In prod, point
+  # S3_* env vars at real AWS S3 / Cloudflare R2 and drop this service.
+  minio:
+    image: minio/minio:latest
+    container_name: closet_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: <redacted>
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # web console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [closet_net]
+
+  # one-shot: create the media bucket and make it publicly readable
+  minio_init:
+    image: minio/mc:latest
+    container_name: closet_minio_init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${S3_ACCESS_KEY:-minioadmin} ${S3_SECRET_KEY:-minioadmin} &&
+      mc mb --ignore-existing local/${S3_BUCKET:-closet-media} &&
+      mc anonymous set download local/${S3_BUCKET:-closet-media} &&
+      echo 'bucket ready';
+      "
     networks: [closet_net]
 
   api:
@@ -36,10 +80,14 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      minio:
+        condition: service_healthy
     environment:
       # inside the network the database is reachable by service name
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
+      # inside the network MinIO is reachable by service name
+      S3_ENDPOINT_URL: http://minio:9000
     env_file:
       - ${ENV_FILE:-.env.dev}
     healthcheck:
@@ -53,6 +101,7 @@ services:
 
 volumes:
   db_closet:
+  minio_data:
 
 networks:
   closet_net:

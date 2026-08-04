@@ -79,7 +79,7 @@ db_closet/data/
 # uploaded / generated media (S3 in production)
 uploads/
 media/
-storage/
+/storage/
 tmp/
 
 # ----------------------------------------------------------------------------
@@ -202,3 +202,4 @@ parse.py
 codebase.txt
 codebase.part*.txt
 *.export.txt
+render.env

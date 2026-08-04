@@ -1,0 +1,84 @@
+<style id="ops-responsive">
+/* ---- ClosET ops console: mobile responsiveness ---------------------------
+   Goals on phones:
+   - no full-page horizontal scroll
+   - table COLUMN HEADERS stay readable (never wrap letter-by-letter)
+   - only long CELL values (UUIDs, refs) wrap
+   - toolbar buttons (Export / Filter / New …) never overflow the card
+   Desktop (>768px) is untouched.
+--------------------------------------------------------------------------- */
+
+/* Tables scroll inside their own wrapper, never the page. */
+.card .table-responsive,
+.dataTables_wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+html, body { max-width: 100%; overflow-x: hidden; }
+
+/* Kill the stray horizontal scrollbar on the header/empty-table area:
+   only show a scrollbar when content truly overflows. */
+.dataTables_scrollHead, .dataTables_scrollBody { overflow: visible !important; }
+
+@media (max-width: 768px) {
+  /* HEADERS: keep each column title on one line and readable.
+     (The earlier rule wrapped these letter-by-letter — that was the bug.) */
+  table.table thead th {
+    white-space: nowrap !important;
+    word-break: normal !important;
+    font-size: .72rem;
+    letter-spacing: .01em;
+    padding-left: .4rem; padding-right: .4rem;
+    vertical-align: middle;
+  }
+
+  /* CELLS: allow long values to wrap so they don't force the table wide,
+     but don't wrap tiny cells pointlessly. */
+  table.table tbody td {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-size: .82rem;
+    padding-left: .4rem; padding-right: .4rem;
+    max-width: 42vw;
+  }
+  /* The row-action / checkbox columns should stay compact, not stretch. */
+  table.table td:first-child, table.table th:first-child { width: 1%; white-space: nowrap; }
+
+  /* TOOLBAR: make the whole button row wrap and every button full-width so
+     "New …" can't run off the right edge. Targets Starlette-Admin's toolbar. */
+  .card-header, .card-header > * { min-width: 0; }
+  .card-header .btn-list,
+  .card-header .d-flex,
+  .datatable-toolbar,
+  .dt-buttons {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: .375rem !important;
+    width: 100%;
+  }
+  .card-header .btn,
+  .datatable-toolbar .btn,
+  .dt-buttons .btn {
+    flex: 1 1 100%;
+    white-space: nowrap;
+    justify-content: center;
+  }
+
+  /* Search + "show N rows" on their own full-width lines. */
+  .dataTables_length,
+  .dataTables_filter { width: 100%; float: none !important; text-align: left; margin: .25rem 0; }
+  .dataTables_filter input { width: 100% !important; margin-left: 0 !important; }
+
+  /* Title + breadcrumb shouldn't fight for one line. */
+  .page-header .row { row-gap: .25rem; }
+  .page-title { font-size: 1.3rem; }
+
+  /* KPI home cards: big numbers shrink to fit. */
+  .card .h1, .card .h2 { font-size: 1.35rem; word-break: break-word; }
+
+  /* Pagination wraps instead of overflowing. */
+  .dataTables_paginate .pagination { flex-wrap: wrap; justify-content: center; }
+}
+
+@media (max-width: 420px) {
+  .card-body { padding: .85rem; }
+  table.table tbody td { max-width: 60vw; }
+}
+</style>

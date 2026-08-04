@@ -65,6 +65,50 @@ class Settings(BaseSettings):
     OPS_SESSION_SECRET: str = ""      # falls back to JWT_SECRET
     OPS_LOGO_URL: str = ""
 
+    # ---- media storage (S3-compatible: MinIO dev, S3/R2 prod) --------
+    STORAGE_PROVIDER: str = "s3"
+    S3_ENDPOINT_URL: str = "http://localhost:9000"   # blank for real AWS S3
+    S3_REGION: str = "us-east-1"
+    S3_ACCESS_KEY: str = "minioadmin"
+    S3_SECRET_KEY: str = "minioadmin"
+    S3_BUCKET: str = "closet-media"
+    S3_PUBLIC_BASE_URL: str = "http://localhost:9000/closet-media"
+    S3_FORCE_PATH_STYLE: bool = True   # MinIO needs path-style; AWS S3 doesn't
+    MEDIA_MAX_BYTES: int = 5 * 1024 * 1024   # 5 MB
+    MEDIA_ALLOWED_TYPES: list[str] = Field(
+        default_factory=lambda: ["image/jpeg", "image/png", "image/webp"]
+    )
+
+# ---- payments ----------------------------------------------------
+    # No credentials are needed to boot. Leave the active provider on "fake"
+    # for development and tests; set it to "cinetpay" and fill the CINETPAY_*
+    # values (from the CinetPay dashboard) when going live.
+    #
+    # Integration model: BACKEND-INITIATES. The backend calls CinetPay's API,
+    # gets a payment_url, and the Flutter app opens it in a WebView.
+    #
+    #   * NOTIFY_URL (webhook) is the SOURCE OF TRUTH — CinetPay calls it
+    #     server-to-server to confirm payment. An order is marked paid ONLY
+    #     from this webhook, never from what the app's WebView sees.
+    #   * RETURN_URL is UX ONLY — where CinetPay redirects the WebView when the
+    #     customer finishes. For a mobile app this is a DEEP LINK back into the
+    #     app (a custom scheme the Flutter app registers), NOT a website. The
+    #     app detects this URL, closes the WebView, and shows a result screen —
+    #     then confirms the real status by polling GET /payments/{id} (which
+    #     reflects the webhook) or waiting for a push.
+    PAYMENTS_ACTIVE_PROVIDER: str = "fake"
+    PAYMENTS_CURRENCY: str = "XAF"
+    # Deep link the app registers, e.g. "closet://payment/return". The app
+    # closes the WebView when the WebView navigates here. UX only — not trusted.
+    PAYMENTS_RETURN_URL: str = "closet://payment/return"
+    CINETPAY_API_KEY: str = ""
+    CINETPAY_SITE_ID: str = ""
+    CINETPAY_SECRET: str = ""           # webhook signature/HMAC secret
+    CINETPAY_BASE_URL: str = "https://api-checkout.cinetpay.com/v2"
+    # Our PUBLIC webhook URL on the prod domain (must be HTTPS + reachable):
+    #   https://<prod-domain>/api/v1/payments/webhook/cinetpay
+    CINETPAY_NOTIFY_URL: str = ""
+
     # ---- misc --------------------------------------------------------
     CORS_ORIGINS: list[str] = Field(default_factory=lambda: ["*"])
 

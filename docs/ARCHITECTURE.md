@@ -1,16 +1,16 @@
 # ClosET Backend — Architecture & Folder Structure
 
-**Status:** proposal for adoption before feature code is written
+**Status:** adopted — this is how the codebase is organised
 **Applies to:** `Closet_Backend` (FastAPI · PostgreSQL · Docker)
-**Related docs:** `DB_DESIGN.md`, `closet_schema.sql`, UML pack (Week 0)
+**Related docs:** `SCHEMA_NAMING.md`, `closet_erd.svg`, `TEAM_WORK_SPLIT.md` (Week 0)
 
 ---
 
 ## 1. Why this document exists
 
-The repository currently holds infrastructure only — `docker-compose.yml`, `init1.sql`, environment files, a CI skeleton. No application code has been written yet. This is the cheapest possible moment to choose a structure: after Sprint 1, moving files means moving imports, migrations and tests too.
+The repository began as infrastructure only. It now holds the identity, geo, delivery-pricing and catalogue modules built on this structure, with the full schema migrated. The structure below was chosen at the cheapest possible moment — before feature code — and has held up as modules landed.
 
-The structure below is **package-by-feature** (a folder per business domain), not package-by-layer (a folder per technical role). The reason is scale. The database design has 43 tables across 14 modules. In a layer-first tree, `models/` eventually holds 43 files, `schemas/` holds 43 more, and adding one field to *pieces* means editing four directories that each contain everything. In a feature-first tree, that change happens inside `modules/catalogue/` and nowhere else.
+The structure below is **package-by-feature** (a folder per business domain), not package-by-layer (a folder per technical role). The reason is scale. The database design has 44 tables across 14 modules. In a layer-first tree, `models/` eventually holds 44 files, `schemas/` holds 44 more, and adding one field to *pieces* means editing four directories that each contain everything. In a feature-first tree, that change happens inside `modules/catalogue/` and nowhere else.
 
 This also mirrors the modular monolith described in the requirements spec (§10) — the same boundaries, expressed in the filesystem.
 
@@ -54,6 +54,7 @@ closet-backend/
 │   │   ├── security.py                # JWT issue/verify, password hashing, TOTP, link signing
 │   │   ├── dependencies.py            # get_db, get_current_user, require_role, get_pagination
 │   │   ├── exceptions.py              # AppError hierarchy + handler mapping to HTTP
+│   │   ├── storage/                   # ✅ S3-compatible media storage (swappable: MinIO/S3/R2)
 │   │   ├── pagination.py
 │   │   ├── logging.py                 # structured logging + request id
 │   │   └── constants.py               # enums shared across modules (Currency, ActorType)
@@ -85,8 +86,7 @@ closet-backend/
 │   │   ├── cinetpay/                  # client.py, signatures.py, schemas.py
 │   │   ├── whatsapp/                  # Business API client + template registry
 │   │   ├── email/
-│   │   ├── fcm/
-│   │   └── storage/                   # S3-compatible upload + CDN URL building
+│   │   └── fcm/
 │   │
 │   ├── workers/                       # anything not in the request/response cycle
 │   │   ├── scheduler.py               # periodic: expire reservations, retry notifications
@@ -124,15 +124,13 @@ closet-backend/
 │
 ├── docs/
 │   ├── ARCHITECTURE.md                # this file
-│   ├── DB_DESIGN.md
-│   ├── uml/                           # Week 0 diagram sources (.puml) + exports
-│   └── adr/                           # short decision records (see §8)
+│   ├── GETTING_STARTED.md             # setup for every environment
+│   ├── OPS_PANEL.md                   # the internal /ops admin panel
+│   ├── SCHEMA_NAMING.md               # the 44-table naming reference
+│   └── closet_erd.svg                 # the entity-relationship diagram
 │
 ├── .env.example                       # committed — the template, no real values
-├── requirements/
-│   ├── base.txt                       # runtime
-│   ├── dev.txt                        # -r base.txt + pytest, ruff, mypy
-│   └── prod.txt                       # -r base.txt + gunicorn
+├── requirements.txt                   # pinned runtime + dev dependencies
 ├── Makefile                           # make up / make test / make migrate / make lint
 ├── README.md
 └── .gitignore
@@ -184,24 +182,11 @@ Not every module needs every file — `geo/` may never have `tasks.py`. Add file
 
 ---
 
-## 6. Migration from the current repository
+## 6. History — the migration into this structure (completed)
 
-The current tree is small, so this is a one-afternoon move — do it before Sprint 1 code lands.
+The repository began as an infrastructure skeleton with a different shape. The move into this structure is **done**; this section is kept as a record of what changed and why.
 
-| Today | Target | Note |
-|---|---|---|
-| `parse.py` (root) | `scripts/export_codebase.py` | tooling doesn't belong at the root |
-| `init1.sql` | `alembic/versions/0001_initial.py` | see below — this is the important one |
-| `env.dev` / `env.staging` / `env.prod` | `.env.dev` / `.env.staging` / `.env.prod` | **currently tracked by git — see §9** |
-| `docker-compose.yml` | same + `docker/` folder, override files | add the `api` service; nginx in the prod file |
-| `requirements.txt` | `requirements/base.txt` + `dev.txt` | currently one line: `fastapi` |
-| `Instructions_backend.md` | `README.md` (dev setup section) | one entry point for onboarding |
-| `codebase.txt` | delete, and keep it ignored | it was re-exported into itself |
-| `READme.md` | `README.md` | case matters on Linux servers |
-
-**On `init1.sql`.** Bootstrapping the schema through `docker-entrypoint-initdb.d` works exactly once — on an empty volume. It cannot evolve a database that already has data, which means the first schema change on the VPS becomes a manual `psql` session. Move the schema into Alembic now, while the only cost is one migration file, and keep `init1.sql` for nothing more than `CREATE EXTENSION`. The container entrypoint then runs `alembic upgrade head` at start, and dev, staging and production converge on the same command.
-
-**On the schema itself.** `init1.sql` and `closet_schema.sql` model the same business differently (`items` vs `pieces`, `selections` vs `orders`, `role INT 1-4` vs enum + separate sourcer profile, and no tables yet for payments, deliveries, notifications or payouts). Both are defensible; what is not defensible is starting to write services against one while migrations are generated from the other. Pick one at the next validation meeting, record the choice in `docs/adr/`, and generate the first migration from it.
+The schema now lives entirely in Alembic (`alembic/versions/`), not in any `docker-entrypoint-initdb.d` SQL. Bootstrapping the schema through init-scripts works exactly once — on an empty volume — and cannot evolve a database that already has data, so it was replaced by migrations. The container entrypoint runs `alembic upgrade head` at start, and dev, staging and production converge on the same command. Two migrations (`0001_identity`, `0002_must_change_password`) build identity; `0003_full_schema` builds the remaining 44-table schema. The earlier competing SQL drafts (`items`/`selections` vs `pieces`/`purchase`) were resolved in favour of the singular-naming design recorded in `SCHEMA_NAMING.md`.
 
 ---
 
@@ -228,27 +213,13 @@ The structure is designed so that growth is additive, never structural:
 
 ---
 
-## 9. Findings in the current repository
+## 9. Findings from the initial repository (all resolved)
 
-Noted while reading the export; all are quick fixes, listed hardest-consequence first.
+These were noted while reading the original export and have since been fixed. Kept as a record.
 
-1. **The environment files are tracked by git.** `.gitignore` excludes `.env` and `.env.*`, but the files are named `env.dev`, `env.staging`, `env.prod` — no leading dot — so they don't match, and they contain database credentials. `Instructions_backend.md` refers to them *with* the dot, so this looks like an accidental rename. Rename them, confirm with `git status`, and treat any credential that has been in a commit as compromised: rotate it. Purging git history is only worth it if the repository is or will be public.
-2. **`requirements.txt` contains one line** (`fastapi==0.139.2`) — no `uvicorn`, `sqlalchemy`, `alembic`, `asyncpg`, `pydantic-settings`, `python-jose`, `passlib`, `httpx`. Pin the real set now, split base/dev, and the CI cache starts working.
-3. **CI installs dependencies and stops.** No lint, no type check, no tests, no service container for Postgres — so a red build is currently impossible. Add `ruff`, `mypy` and `pytest` steps with a `postgres:16` service; a pipeline that can't fail provides no signal.
-4. **`docker-compose.yml` has no `api` service** and no nginx, though the README describes three containers. Also: the database bind-mounts `./db_closet` *inside the repository* while a named `postgres_data` volume is declared and unused. Switch to the named volume — a stray `git add .` should never be able to stage the database, and bind-mounted PGDATA has permission quirks across machines.
-5. **`codebase.txt` was committed**, so the export ended up containing an older copy of itself (the duplicated file entries in the dump). The provided `.gitignore` already excludes it; the nesting also indicates `pathspec` isn't installed locally, so `.gitignore` rules were skipped during the export — `pip install pathspec` fixes both.
-6. **`READme.md` → `README.md`.** Linux is case-sensitive; tooling and forges look for the canonical name.
-
----
-
-## 10. Adoption checklist
-
-- [ ] Rename `env.*` → `.env.*`, verify with `git status`, rotate the exposed credentials
-- [ ] Create the folder skeleton (`scaffold_backend.py`)
-- [ ] Move `parse.py` → `scripts/`, delete committed `codebase.txt`, rename `READme.md`
-- [ ] Decide the schema source of truth; record it in `docs/adr/0001-schema-source.md`
-- [ ] Generate `alembic/versions/0001_initial.py`; reduce `init1.sql` to extensions only
-- [ ] Fill `requirements/base.txt` and `dev.txt`
-- [ ] Add the `api` service to compose + `entrypoint.sh` running `alembic upgrade head`
-- [ ] Extend CI: ruff + mypy + pytest against a `postgres:16` service container
-- [ ] Merge `Instructions_backend.md` into `README.md`
+1. **Environment files were tracked by git** (named `env.dev` without a leading dot, so `.gitignore` missed them). Renamed to `.env.*`; `.gitignore` root-anchors them now.
+2. **`requirements.txt` had one line.** The full pinned set (fastapi, uvicorn, sqlalchemy, alembic, asyncpg, pydantic-settings, python-jose, passlib, httpx, boto3, …) is now pinned and verified from a clean venv.
+3. **CI installed dependencies and stopped.** It now runs ruff + tests against a real Postgres service and builds the Docker image.
+4. **`docker-compose.yml` had no `api` service** and bind-mounted the database inside the repo. It now has `api`, `minio`, and `minio_init` services on named volumes (`db_closet`, `minio_data`).
+5. **`codebase.txt` was committed** and re-exported into itself; it is now git-ignored.
+6. **`READme.md` → `README.md`** (Linux is case-sensitive).
