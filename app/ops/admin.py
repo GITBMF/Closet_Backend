@@ -14,6 +14,8 @@ from __future__ import annotations
 from starlette.middleware import Middleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette_admin import PasswordField
+from starlette.requests import Request
+from starlette_admin import row_action
 from starlette_admin.contrib.sqla import Admin, ModelView
 from starlette_admin.exceptions import FormValidationError
 
@@ -27,6 +29,24 @@ from app.modules.identity.models import (
     RefreshToken,
     User,
 )
+from app.ops import actions as A
+from app.modules.catalogue.models import House, Piece, Universe
+from app.modules.delivery.models import Courier, Delivery, DeliveryEvent
+from app.modules.delivery_pricing.models import DeliveryRate
+from app.modules.geo.models import (
+    Division,
+    FixedRateCity,
+    Neighbourhood,
+    Region,
+    Subdivision,
+)
+from app.modules.notifications.models import Notification, NotificationTemplate
+from app.modules.ops.models import AppSetting
+from app.modules.orders.models import Purchase
+from app.modules.payments.models import Payment, Refund
+from app.modules.returns.models import ReturnTicket
+from app.modules.showcasing.models import FeaturedSlot, Sponsor
+from app.modules.sourcing.models import Payout, SourcerProfile, Submission
 from app.ops.auth import OpsAuthProvider
 from app.ops.onboarding import onboarding_routes
 
@@ -188,6 +208,401 @@ class AuditLogView(ModelView):
         return False
 
 
+
+# ============================================================ business views
+#
+# Reference/config data is fully editable. Everything with business rules is
+# read-only in the grid and changed ONLY through the service-backed row actions
+# below — so the state machines and cross-module effects (grant role, refund,
+# restock, create piece) built into the services are always honoured. Nobody
+# hand-edits a status column and skips the logic.
+
+
+class _ReadOnly(ModelView):
+    """View + search only; state changes go through row actions."""
+
+    def can_create(self, request) -> bool:  # noqa: ANN001
+        return False
+
+    def can_edit(self, request) -> bool:  # noqa: ANN001
+        return False
+
+    def can_delete(self, request) -> bool:  # noqa: ANN001
+        return False
+
+
+class _Reference(ModelView):
+    """Full CRUD — safe reference/config data."""
+
+
+# --------------------------------------------------------------- commerce
+class OrderView(_ReadOnly):
+    identity = "order"
+    name = "Commande"
+    label = "Commandes"
+    icon = "fa fa-receipt"
+    fields = ["order_number", "status", "customer_name", "customer_phone", "total", "currency", "placed_at"]
+    searchable_fields = ["order_number", "customer_name", "customer_phone"]
+    sortable_fields = ["placed_at", "total", "status"]
+    fields_default_sort = [("placed_at", True)]
+
+    @row_action(
+        name="advance_status", text="Faire avancer",
+        confirmation="Déplacer cette commande vers le statut choisi ?",
+        icon_class="fa fa-forward",
+        form='''<div class="mb-3"><label class="form-label">Nouveau statut</label>
+          <select class="form-control" name="status">
+            <option value="preparing">preparing</option>
+            <option value="ready">ready</option>
+            <option value="delivering">delivering</option>
+            <option value="completed">completed</option>
+          </select></div>
+          <div class="mb-3"><label class="form-label">Raison (optionnel)</label>
+          <input class="form-control" name="reason"/></div>''',
+    )
+    async def advance_status(self, request: Request, pk) -> str:
+        data = await request.form()
+        return await A.order_update_status(request, pk, data.get("status"), data.get("reason"))
+
+    @row_action(
+        name="cancel_order", text="Annuler", action_btn_class="btn-outline-danger",
+        confirmation="Annuler cette commande ?", icon_class="fa fa-ban",
+        form='''<div class="mb-3"><label class="form-label">Raison</label>
+                <input class="form-control" name="reason" required/></div>''',
+    )
+    async def cancel_order(self, request: Request, pk) -> str:
+        data = await request.form()
+        return await A.order_cancel(request, pk, data.get("reason", ""))
+
+
+class PaymentView(_ReadOnly):
+    identity = "payment"
+    name = "Paiement"
+    label = "Paiements"
+    icon = "fa fa-credit-card"
+    fields = ["provider_reference", "operator", "status", "amount", "currency", "payer_phone", "created_at"]
+    searchable_fields = ["provider_reference", "payer_phone"]
+    sortable_fields = ["created_at", "amount", "status"]
+    fields_default_sort = [("created_at", True)]
+
+    @row_action(
+        name="reconcile", text="Réconcilier",
+        confirmation="Fixer manuellement le statut après vérification ?",
+        icon_class="fa fa-scale-balanced",
+        form='''<div class="mb-3"><label class="form-label">Statut</label>
+          <select class="form-control" name="status">
+            <option value="succeeded">succeeded</option>
+            <option value="failed">failed</option>
+          </select></div>
+          <div class="mb-3"><label class="form-label">Note (optionnel)</label>
+          <input class="form-control" name="note"/></div>''',
+    )
+    async def reconcile(self, request: Request, pk) -> str:
+        data = await request.form()
+        return await A.payment_reconcile(request, pk, data.get("status"), data.get("note"))
+
+    @row_action(
+        name="refund", text="Rembourser", action_btn_class="btn-outline-danger",
+        confirmation="Émettre un remboursement ?", icon_class="fa fa-rotate-left",
+        form='''<div class="mb-3"><label class="form-label">Montant</label>
+          <input class="form-control" name="amount" type="number" step="0.01" required/></div>
+          <div class="mb-3"><label class="form-label">Raison (optionnel)</label>
+          <input class="form-control" name="reason"/></div>''',
+    )
+    async def refund(self, request: Request, pk) -> str:
+        data = await request.form()
+        return await A.payment_refund(request, pk, data.get("amount"), data.get("reason"))
+
+
+class RefundView(_ReadOnly):
+    identity = "refund"
+    name = "Remboursement"
+    label = "Remboursements"
+    icon = "fa fa-rotate-left"
+    fields = ["payment_id", "amount", "reason", "provider_reference", "created_at"]
+    fields_default_sort = [("created_at", True)]
+
+
+class DeliveryView(_ReadOnly):
+    identity = "delivery"
+    name = "Livraison"
+    label = "Livraisons"
+    icon = "fa fa-truck"
+    fields = ["purchase_id", "status", "courier_id", "created_at"]
+    sortable_fields = ["created_at", "status"]
+
+
+class DeliveryEventView(_ReadOnly):
+    identity = "delivery-event"
+    name = "Événement"
+    label = "Événements de livraison"
+    icon = "fa fa-route"
+    fields = ["delivery_id", "status", "reason", "source", "created_at"]
+    sortable_fields = ["created_at", "status"]
+
+
+class ReturnView(_ReadOnly):
+    identity = "return"
+    name = "Retour"
+    label = "Retours"
+    icon = "fa fa-box-open"
+    fields = ["purchase_id", "piece_id", "reason", "status", "resolution_note", "restocked", "created_at"]
+    sortable_fields = ["created_at", "status"]
+    # NOTE: the returns SERVICE is not part of this codebase yet (only
+    # constants + models). Returns are view-only here. When the returns module
+    # (service + dependencies) is merged, add approve/reject/resolve row actions
+    # calling A.return_approve / A.return_reject / A.return_resolve — those
+    # helpers are ready in app/ops/actions.py.
+
+
+# --------------------------------------------------------------- catalogue
+class PieceView(_ReadOnly):
+    identity = "piece"
+    name = "Pièce"
+    label = "Pièces"
+    icon = "fa fa-tags"
+    fields = ["sku", "title", "price", "currency", "condition", "status", "created_at"]
+    searchable_fields = ["sku", "title"]
+    sortable_fields = ["created_at", "price", "status"]
+
+    @row_action(
+        name="publish", text="Publier",
+        confirmation="Publier cette pièce dans la boutique ?", icon_class="fa fa-bullhorn",
+    )
+    async def publish(self, request: Request, pk) -> str:
+        return await A.piece_publish(request, pk)
+
+
+class HouseView(_Reference):
+    identity = "house"
+    name = "Maison"
+    label = "Maisons"
+    icon = "fa fa-building"
+    fields = ["name"]
+
+
+class UniverseView(_Reference):
+    identity = "universe"
+    name = "Univers"
+    label = "Univers"
+    icon = "fa fa-layer-group"
+    fields = ["name"]
+
+
+class SponsorView(_Reference):
+    identity = "sponsor"
+    name = "Sponsor"
+    label = "Sponsors"
+    icon = "fa fa-handshake"
+
+
+class FeaturedSlotView(_Reference):
+    identity = "featured"
+    name = "Mise en avant"
+    label = "Mises en avant"
+    icon = "fa fa-star"
+
+
+# --------------------------------------------------------------- sourcing
+class SourcerProfileView(_ReadOnly):
+    identity = "sourcer"
+    name = "Sourceur"
+    label = "Sourceurs"
+    icon = "fa fa-user-tie"
+    fields = ["display_name", "phone", "status", "collaboration_type", "is_featured", "created_at"]
+    searchable_fields = ["display_name", "phone"]
+    sortable_fields = ["created_at", "status"]
+
+    @row_action(
+        name="approve", text="Approuver",
+        confirmation="Approuver ce sourceur et accorder le rôle ?", icon_class="fa fa-check",
+    )
+    async def approve(self, request: Request, pk) -> str:
+        return await A.sourcer_approve(request, pk)
+
+    @row_action(
+        name="reject", text="Rejeter", action_btn_class="btn-outline-danger",
+        icon_class="fa fa-xmark",
+        form='''<div class="mb-3"><label class="form-label">Raison</label>
+                <input class="form-control" name="reason" required/></div>''',
+    )
+    async def reject(self, request: Request, pk) -> str:
+        data = await request.form()
+        return await A.sourcer_reject(request, pk, data.get("reason", ""))
+
+
+class SubmissionView(_ReadOnly):
+    identity = "submission"
+    name = "Proposition"
+    label = "Propositions"
+    icon = "fa fa-inbox"
+    fields = ["item_type", "brand", "size_label", "condition_claimed", "desired_price", "status", "created_at"]
+    searchable_fields = ["item_type", "brand"]
+    sortable_fields = ["created_at", "status"]
+
+    @row_action(name="accept", text="Accepter", confirmation="Accepter cette proposition ?", icon_class="fa fa-check")
+    async def accept(self, request: Request, pk) -> str:
+        return await A.submission_decide(request, pk, True, None)
+
+    @row_action(
+        name="refuse", text="Refuser", action_btn_class="btn-outline-danger", icon_class="fa fa-xmark",
+        form='''<div class="mb-3"><label class="form-label">Raison</label>
+                <input class="form-control" name="reason" required/></div>''',
+    )
+    async def refuse(self, request: Request, pk) -> str:
+        data = await request.form()
+        return await A.submission_decide(request, pk, False, data.get("reason"))
+
+    @row_action(
+        name="catalogue", text="Cataloguer",
+        confirmation="Créer une pièce à partir de cette proposition acceptée ?",
+        icon_class="fa fa-tag",
+        form='''<div class="mb-3"><label class="form-label">Titre</label>
+          <input class="form-control" name="title" required/></div>
+          <div class="mb-3"><label class="form-label">Prix</label>
+          <input class="form-control" name="price" type="number" step="0.01" required/></div>
+          <div class="mb-3"><label class="form-label">État</label>
+          <select class="form-control" name="condition">
+            <option value="good">good</option>
+            <option value="very_good">very good</option>
+            <option value="new">new</option>
+          </select></div>''',
+    )
+    async def catalogue(self, request: Request, pk) -> str:
+        data = await request.form()
+        return await A.submission_catalogue(request, pk, data.get("title"), data.get("price"), data.get("condition", "good"))
+
+
+class PayoutView(_ReadOnly):
+    identity = "payout"
+    name = "Versement"
+    label = "Versements"
+    icon = "fa fa-money-bill"
+    fields = ["sourcer_id", "amount", "currency", "status", "method", "paid_at", "created_at"]
+    sortable_fields = ["created_at", "amount", "status"]
+
+
+# --------------------------------------------------------------- messages
+class NotificationView(_ReadOnly):
+    identity = "notification"
+    name = "Message"
+    label = "Messages envoyés"
+    icon = "fa fa-bell"
+    fields = ["template_code", "channel", "recipient_phone", "status", "queued_at", "sent_at"]
+    sortable_fields = ["queued_at", "sent_at", "status"]
+    fields_default_sort = [("queued_at", True)]
+
+
+class TemplateView(_Reference):
+    identity = "template"
+    name = "Modèle"
+    label = "Modèles de message"
+    icon = "fa fa-envelope"
+    fields = ["code", "channel", "locale", "subject", "body"]
+    searchable_fields = ["code"]
+
+
+# ------------------------------------------------------- people (actions)
+class PersonView(_ReadOnly):
+    """People with role/active actions. Distinct from the credential-managing
+    UserView above (which creates admins); this is the operational people list."""
+
+    identity = "person"
+    name = "Personne"
+    label = "Personnes"
+    icon = "fa fa-id-card"
+    fields = ["full_name", "email", "phone", "city", "role", "is_active"]
+    searchable_fields = ["full_name", "email", "phone"]
+    sortable_fields = ["full_name", "role"]
+
+    @row_action(
+        name="change_role", text="Changer de rôle",
+        confirmation="Changer le rôle de cette personne ?", icon_class="fa fa-user-gear",
+        form='''<div class="mb-3"><label class="form-label">Rôle</label>
+          <select class="form-control" name="role">
+            <option value="customer">customer</option>
+            <option value="sourcer">sourcer</option>
+            <option value="courier">courier</option>
+            <option value="admin">admin</option>
+          </select></div>
+          <div class="mb-3"><label class="form-label">Raison (optionnel)</label>
+          <input class="form-control" name="reason"/></div>''',
+    )
+    async def change_role(self, request: Request, pk) -> str:
+        data = await request.form()
+        return await A.user_change_role(request, pk, data.get("role"), data.get("reason"))
+
+    @row_action(
+        name="deactivate", text="Désactiver", action_btn_class="btn-outline-danger",
+        confirmation="Désactiver ce compte ?", icon_class="fa fa-user-slash",
+    )
+    async def deactivate(self, request: Request, pk) -> str:
+        return await A.user_set_active(request, pk, False)
+
+    @row_action(name="activate", text="Réactiver", confirmation="Réactiver ce compte ?", icon_class="fa fa-user-check")
+    async def activate(self, request: Request, pk) -> str:
+        return await A.user_set_active(request, pk, True)
+
+
+# --------------------------------------------------------------- reference
+class CourierView(_Reference):
+    identity = "courier"
+    name = "Coursier"
+    label = "Coursiers"
+    icon = "fa fa-person-biking"
+
+
+class DeliveryRateView(_Reference):
+    identity = "delivery-rate"
+    name = "Tarif"
+    label = "Tarifs de livraison"
+    icon = "fa fa-money-bill-wave"
+
+
+class RegionView(_Reference):
+    identity = "region"
+    name = "Région"
+    label = "Régions"
+    icon = "fa fa-map"
+    fields = ["name", "code"]
+
+
+class DivisionView(_Reference):
+    identity = "division"
+    name = "Département"
+    label = "Départements"
+    icon = "fa fa-map-location"
+
+
+class SubdivisionView(_Reference):
+    identity = "subdivision"
+    name = "Arrondissement"
+    label = "Arrondissements"
+    icon = "fa fa-map-pin"
+
+
+class NeighbourhoodView(_Reference):
+    identity = "neighbourhood"
+    name = "Quartier"
+    label = "Quartiers"
+    icon = "fa fa-location-dot"
+
+
+class FixedRateCityView(_Reference):
+    identity = "fixed-rate-city"
+    name = "Ville (tarif fixe)"
+    label = "Villes tarif fixe"
+    icon = "fa fa-city"
+
+
+class AppSettingView(_Reference):
+    identity = "app-setting"
+    name = "Paramètre"
+    label = "Paramètres"
+    icon = "fa fa-sliders"
+
+
+
 def build_admin() -> Admin:
     admin = Admin(
         engine,
@@ -200,7 +615,7 @@ def build_admin() -> Admin:
         middlewares=[
             Middleware(
                 SessionMiddleware,
-                secret_key=settings.OPS_SESSION_SECRET or settings.JWT_SECRET,
+                secret_key=settings.OPS_SESSION_SECRET,
                 session_cookie="closet_ops",
                 https_only=settings.ENVIRONMENT == "prod",
                 max_age=60 * 60 * 8,          # one working day
@@ -210,11 +625,47 @@ def build_admin() -> Admin:
         debug=settings.DEBUG,
     )
 
+    # --- identity / security (existing) ---
     admin.add_view(UserView(User))
     admin.add_view(RefreshTokenView(RefreshToken))
     admin.add_view(DeviceTokenView(DeviceToken))
     admin.add_view(PasswordResetTokenView(PasswordResetToken))
     admin.add_view(AuditLogView(AuditLog))
+
+    # --- commerce ---
+    admin.add_view(OrderView(Purchase))
+    admin.add_view(PaymentView(Payment))
+    admin.add_view(RefundView(Refund))
+    admin.add_view(DeliveryView(Delivery))
+    admin.add_view(DeliveryEventView(DeliveryEvent))
+    admin.add_view(ReturnView(ReturnTicket))
+
+    # --- catalogue ---
+    admin.add_view(PieceView(Piece))
+    admin.add_view(HouseView(House))
+    admin.add_view(UniverseView(Universe))
+    admin.add_view(SponsorView(Sponsor))
+    admin.add_view(FeaturedSlotView(FeaturedSlot))
+
+    # --- sourcing ---
+    admin.add_view(SourcerProfileView(SourcerProfile))
+    admin.add_view(SubmissionView(Submission))
+    admin.add_view(PayoutView(Payout))
+
+    # --- people & messages ---
+    admin.add_view(PersonView(User))
+    admin.add_view(NotificationView(Notification))
+    admin.add_view(TemplateView(NotificationTemplate))
+
+    # --- reference / settings ---
+    admin.add_view(CourierView(Courier))
+    admin.add_view(DeliveryRateView(DeliveryRate))
+    admin.add_view(RegionView(Region))
+    admin.add_view(DivisionView(Division))
+    admin.add_view(SubdivisionView(Subdivision))
+    admin.add_view(NeighbourhoodView(Neighbourhood))
+    admin.add_view(FixedRateCityView(FixedRateCity))
+    admin.add_view(AppSettingView(AppSetting))
     return admin
 
 
