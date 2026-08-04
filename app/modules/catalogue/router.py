@@ -62,7 +62,7 @@ async def browse_pieces(
         limit=limit, offset=offset,
     )
     return PiecesPage(
-        items=[PieceSummary.model_validate(p) for p in items],
+        items=[PieceSummary.from_piece(p) for p in items],
         total=total, limit=limit, offset=offset,
     )
 
@@ -78,7 +78,7 @@ async def search_pieces(
         status=PieceStatus.PUBLISHED, search=q, limit=limit, offset=offset
     )
     return PiecesPage(
-        items=[PieceSummary.model_validate(p) for p in items],
+        items=[PieceSummary.from_piece(p) for p in items],
         total=total, limit=limit, offset=offset,
     )
 
@@ -90,7 +90,7 @@ async def get_piece(
     piece, in_wishlist = await service.get_detail(
         piece_id, viewer_id=user.id if user else None
     )
-    detail = PieceDetail.model_validate(piece)
+    detail = PieceDetail.from_piece(piece)
     detail.in_wishlist = in_wishlist
     return detail
 
@@ -108,7 +108,7 @@ async def list_universes(service: Service) -> list[UniverseOut]:
 # ============================================================ customer wishlist
 @router.get("/wishlist", response_model=list[PieceSummary])
 async def my_wishlist(service: Service, user: CurrentUser) -> list[PieceSummary]:
-    return [PieceSummary.model_validate(p) for p in await service.list_wishlist(user.id)]
+    return [PieceSummary.from_piece(p) for p in await service.list_wishlist(user.id)]
 
 
 @router.post("/wishlist/{piece_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -152,7 +152,7 @@ async def create_universe(payload: UniverseCreate, service: Service) -> Universe
 async def create_piece(payload: PieceCreate, service: Service) -> PieceDetail:
     piece = await service.create_piece(payload)
     piece, _ = await service.get_detail(piece.id)
-    return PieceDetail.model_validate(piece)
+    return PieceDetail.from_piece(piece)
 
 
 @admin_router.patch(
@@ -164,7 +164,7 @@ async def update_piece(
 ) -> PieceDetail:
     await service.update_piece(piece_id, payload)
     piece, _ = await service.get_detail(piece_id)
-    return PieceDetail.model_validate(piece)
+    return PieceDetail.from_piece(piece)
 
 
 @admin_router.delete(
@@ -183,7 +183,7 @@ async def delete_piece(piece_id: uuid.UUID, service: Service) -> Response:
 async def publish_piece(piece_id: uuid.UUID, service: Service) -> PieceDetail:
     await service.publish_piece(piece_id)
     piece, _ = await service.get_detail(piece_id)
-    return PieceDetail.model_validate(piece)
+    return PieceDetail.from_piece(piece)
 
 
 # ============================================================== admin: media

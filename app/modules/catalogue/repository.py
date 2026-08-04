@@ -94,7 +94,11 @@ class CatalogueRepository:
         max_price=None,
         search: str | None,
     ):
-        stmt = select(Piece).where(Piece.deleted_at.is_(None))
+        stmt = (
+            select(Piece)
+            .options(selectinload(Piece.media))  # load images for the grid
+            .where(Piece.deleted_at.is_(None))
+        )
         if status is not None:
             stmt = stmt.where(Piece.status == status)
         if house_id is not None:
@@ -210,6 +214,7 @@ class CatalogueRepository:
     async def wishlist_pieces(self, user_id: uuid.UUID) -> list[Piece]:
         stmt = (
             select(Piece)
+            .options(selectinload(Piece.media))  # load images for the grid
             .join(WishlistItem, WishlistItem.piece_id == Piece.id)
             .where(WishlistItem.user_id == user_id, Piece.deleted_at.is_(None))
             .order_by(WishlistItem.created_at.desc())

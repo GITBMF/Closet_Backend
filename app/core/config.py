@@ -79,7 +79,7 @@ class Settings(BaseSettings):
         default_factory=lambda: ["image/jpeg", "image/png", "image/webp"]
     )
 
-# ---- payments ----------------------------------------------------
+    # ---- payments ----------------------------------------------------
     # No credentials are needed to boot. Leave the active provider on "fake"
     # for development and tests; set it to "cinetpay" and fill the CINETPAY_*
     # values (from the CinetPay dashboard) when going live.
@@ -108,6 +108,13 @@ class Settings(BaseSettings):
     # Our PUBLIC webhook URL on the prod domain (must be HTTPS + reachable):
     #   https://<prod-domain>/api/v1/payments/webhook/cinetpay
     CINETPAY_NOTIFY_URL: str = ""
+
+    # ---- notifications ----------------------------------------------
+    # Channel -> provider code, e.g. {"whatsapp": "twilio"}. Any channel not
+    # listed (or mapped to "console") uses the console provider, which always
+    # succeeds. Accepts a dict, or a JSON string from an env var. Default: all
+    # channels use console.
+    NOTIFICATIONS_PROVIDERS: dict[str, str] = Field(default_factory=dict)
 
     # ---- misc --------------------------------------------------------
     CORS_ORIGINS: list[str] = Field(default_factory=lambda: ["*"])
