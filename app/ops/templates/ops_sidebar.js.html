@@ -1,0 +1,94 @@
+<script id="ops-sidebar-state">
+/* ---- ClosET ops console: sidebar state persistence -----------------------
+   Starlette-Admin re-renders the sidebar on every page load, so by default:
+     - the menu scrolls back to the top, and
+     - only the group for the current page is open (others you opened collapse).
+   This script persists, across page loads (per browser, via localStorage):
+     1. the sidebar's scroll position, and
+     2. which dropdown groups are open.
+   It is defensive: if the markup differs, it simply does nothing.
+--------------------------------------------------------------------------- */
+(function () {
+  var SCROLL_KEY = "closet_ops_sidebar_scroll";
+  var OPEN_KEY   = "closet_ops_sidebar_open_groups";
+
+  function ready(fn) {
+    if (document.readyState !== "loading") fn();
+    else document.addEventListener("DOMContentLoaded", fn);
+  }
+
+  ready(function () {
+    var menu = document.getElementById("sidebar-menu");
+    if (!menu) return;
+    // The scrollable element is the nav list inside #sidebar-menu.
+    var scroller = menu.querySelector(".navbar-nav") || menu;
+
+    // --- 1. restore + persist scroll position ---
+    try {
+      var saved = parseInt(localStorage.getItem(SCROLL_KEY) || "0", 10);
+      if (saved > 0) scroller.scrollTop = saved;
+    } catch (e) {}
+
+    var scrollTimer = null;
+    scroller.addEventListener("scroll", function () {
+      if (scrollTimer) return;
+      scrollTimer = setTimeout(function () {
+        scrollTimer = null;
+        try { localStorage.setItem(SCROLL_KEY, String(scroller.scrollTop)); } catch (e) {}
+      }, 120);
+    });
+    // also save right before leaving the page
+    window.addEventListener("beforeunload", function () {
+      try { localStorage.setItem(SCROLL_KEY, String(scroller.scrollTop)); } catch (e) {}
+    });
+
+    // --- 2. remember which dropdown groups are open ---
+    // Each group is a ".nav-item.dropdown" with a toggle <a> and a ".dropdown-menu".
+    var groups = menu.querySelectorAll(".nav-item.dropdown");
+    if (!groups.length) return;
+
+    // Give each group a stable key from its label text.
+    function groupKey(group) {
+      var t = group.querySelector(".nav-link-title");
+      return t ? t.textContent.trim() : null;
+    }
+
+    // Load the set of open groups.
+    var openSet = {};
+    try { openSet = JSON.parse(localStorage.getItem(OPEN_KEY) || "{}") || {}; } catch (e) { openSet = {}; }
+
+    function saveOpenSet() {
+      try { localStorage.setItem(OPEN_KEY, JSON.stringify(openSet)); } catch (e) {}
+    }
+
+    groups.forEach(function (group) {
+      var key = groupKey(group);
+      if (!key) return;
+      var toggle = group.querySelector(".dropdown-toggle");
+      var panel  = group.querySelector(".dropdown-menu");
+      if (!toggle || !panel) return;
+
+      // Apply remembered state: if user had it open (or it's active), show it.
+      var isActive = group.classList.contains("active");
+      if (openSet[key] || isActive) {
+        group.classList.add("active");
+        toggle.classList.add("show");
+        panel.classList.add("show");
+        openSet[key] = true;
+      }
+
+      // Track manual open/close. Use click on the toggle; read the resulting state.
+      toggle.addEventListener("click", function () {
+        // let Bootstrap/inline handlers run first, then record the new state
+        setTimeout(function () {
+          var nowOpen = panel.classList.contains("show");
+          if (nowOpen) openSet[key] = true; else delete openSet[key];
+          saveOpenSet();
+        }, 30);
+      });
+    });
+
+    saveOpenSet();
+  });
+})();
+</script>
