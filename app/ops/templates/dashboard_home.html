@@ -1,0 +1,95 @@
+{% extends "layout.html" %}
+
+{#
+  The content block is rendered INSIDE the shell's <div class="row row-deck row-cards">.
+  So everything here must be a direct col-* child of that row — no extra wrapping
+  .row, no single .col-12 around the whole page (that was what crushed the cards).
+#}
+{% block content %}
+
+{% if error %}
+<div class="col-12">
+  <div class="alert alert-warning" role="alert">
+    <h4 class="alert-title">Le tableau de bord n'a pas pu être chargé.</h4>
+    <div class="text-muted">{{ error }}</div>
+    <div class="text-muted mt-1">
+      Vérifiez que la migration des vues a été appliquée : <code>alembic upgrade head</code>.
+    </div>
+  </div>
+</div>
+{% else %}
+
+<!-- page heading spans the full width -->
+<div class="col-12 mb-1">
+  <h2 class="page-title mb-1">Tableau de bord</h2>
+  <div class="text-muted">Vue d'ensemble de la maison aujourd'hui.</div>
+</div>
+
+<!-- KPI cards: each is its own responsive column -->
+{% for c in cards %}
+<div class="col-6 col-sm-4 col-xl-2">
+  <div class="card card-sm">
+    <div class="card-body">
+      <div class="text-secondary small">{{ c.label }}</div>
+      <div class="h2 mb-0 mt-1">{{ c.value }}</div>
+      {% if c.hint %}<div class="text-muted small mt-1">{{ c.hint }}</div>{% endif %}
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+<!-- À traiter -->
+<div class="col-12 col-lg-8">
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">À traiter</h3>
+      <div class="card-actions text-muted">{{ (alerts.overdue_count or 0) + (alerts.unsold_count or 0) }} éléments</div>
+    </div>
+    <div class="card-body">
+      <div class="text-uppercase text-muted small mb-2">Commandes en cours</div>
+      {% if alerts.overdue_orders %}
+      <div class="list-group list-group-flush">
+        {% for o in alerts.overdue_orders %}
+        <a class="list-group-item list-group-item-action d-flex align-items-center justify-content-between px-2"
+           href="{{ url_for(__name__ ~ ':list', identity='order') }}">
+          <span>{{ o.order_number }}</span>
+          <span>
+            <span class="badge bg-{{ o.tone }}-lt text-capitalize">{{ o.status }}</span>
+            <span class="text-muted small ms-2">{{ o.age_days }} j</span>
+          </span>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}<div class="text-muted">Rien à signaler.</div>{% endif %}
+
+      <div class="text-uppercase text-muted small mb-2 mt-3">Pièces invendues (anciennes)</div>
+      {% if alerts.unsold_pieces %}
+      <div class="list-group list-group-flush">
+        {% for p in alerts.unsold_pieces %}
+        <div class="list-group-item d-flex align-items-center justify-content-between px-2">
+          <span class="text-truncate" style="max-width:60%">{{ p.title }}</span>
+          <span class="text-muted small">{{ p.age_days }} j · {{ p.price }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}<div class="text-muted">Aucune pièce ancienne.</div>{% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Raccourcis -->
+<div class="col-12 col-lg-4">
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">Raccourcis</h3></div>
+    <div class="list-group list-group-flush">
+      <a class="list-group-item list-group-item-action" href="{{ url_for(__name__ ~ ':list', identity='order') }}">Commandes</a>
+      <a class="list-group-item list-group-item-action" href="{{ url_for(__name__ ~ ':list', identity='payment') }}">Paiements</a>
+      <a class="list-group-item list-group-item-action" href="{{ url_for(__name__ ~ ':list', identity='sourcer') }}">Sourceurs à approuver</a>
+      <a class="list-group-item list-group-item-action" href="{{ url_for(__name__ ~ ':list', identity='submission') }}">Propositions à examiner</a>
+      <a class="list-group-item list-group-item-action" href="{{ url_for(__name__ ~ ':list', identity='piece') }}">Pièces</a>
+    </div>
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}

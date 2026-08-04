@@ -17,6 +17,7 @@ from starlette_admin import PasswordField
 from starlette.requests import Request
 from starlette_admin import row_action
 from starlette_admin.contrib.sqla import Admin, ModelView
+from starlette_admin.views import DropDown
 from starlette_admin.exceptions import FormValidationError
 
 from app.core.config import settings
@@ -30,6 +31,7 @@ from app.modules.identity.models import (
     User,
 )
 from app.ops import actions as A
+from app.ops.home import DashboardHome
 from app.modules.catalogue.models import House, Piece, Universe
 from app.modules.delivery.models import Courier, Delivery, DeliveryEvent
 from app.modules.delivery_pricing.models import DeliveryRate
@@ -609,6 +611,8 @@ def build_admin() -> Admin:
         title="ClosET · Ops",
         base_url=settings.OPS_BASE_URL,
         route_name="ops",
+        index_view=DashboardHome(label="Tableau de bord", icon="fa fa-gauge-high"),
+        templates_dir="app/ops/templates",
         logo_url=settings.OPS_LOGO_URL or None,
         login_logo_url=settings.OPS_LOGO_URL or None,
         auth_provider=OpsAuthProvider(),
@@ -625,47 +629,80 @@ def build_admin() -> Admin:
         debug=settings.DEBUG,
     )
 
-    # --- identity / security (existing) ---
-    admin.add_view(UserView(User))
-    admin.add_view(RefreshTokenView(RefreshToken))
-    admin.add_view(DeviceTokenView(DeviceToken))
-    admin.add_view(PasswordResetTokenView(PasswordResetToken))
-    admin.add_view(AuditLogView(AuditLog))
+    # Views are grouped into collapsible sections in the sidebar via DropDown.
+    # Each DropDown is one subgroup; ModelViews inside it keep all their actions.
 
-    # --- commerce ---
-    admin.add_view(OrderView(Purchase))
-    admin.add_view(PaymentView(Payment))
-    admin.add_view(RefundView(Refund))
-    admin.add_view(DeliveryView(Delivery))
-    admin.add_view(DeliveryEventView(DeliveryEvent))
-    admin.add_view(ReturnView(ReturnTicket))
+    # --- Commerce ---
+    admin.add_view(DropDown(
+        "Commerce", icon="fa fa-cart-shopping",
+        views=[
+            OrderView(Purchase),
+            PaymentView(Payment),
+            RefundView(Refund),
+            DeliveryView(Delivery),
+            DeliveryEventView(DeliveryEvent),
+            ReturnView(ReturnTicket),
+        ],
+    ))
 
-    # --- catalogue ---
-    admin.add_view(PieceView(Piece))
-    admin.add_view(HouseView(House))
-    admin.add_view(UniverseView(Universe))
-    admin.add_view(SponsorView(Sponsor))
-    admin.add_view(FeaturedSlotView(FeaturedSlot))
+    # --- Catalogue ---
+    admin.add_view(DropDown(
+        "Catalogue", icon="fa fa-tags",
+        views=[
+            PieceView(Piece),
+            HouseView(House),
+            UniverseView(Universe),
+            SponsorView(Sponsor),
+            FeaturedSlotView(FeaturedSlot),
+        ],
+    ))
 
-    # --- sourcing ---
-    admin.add_view(SourcerProfileView(SourcerProfile))
-    admin.add_view(SubmissionView(Submission))
-    admin.add_view(PayoutView(Payout))
+    # --- Approvisionnement (sourcing) ---
+    admin.add_view(DropDown(
+        "Approvisionnement", icon="fa fa-user-tie",
+        views=[
+            SourcerProfileView(SourcerProfile),
+            SubmissionView(Submission),
+            PayoutView(Payout),
+        ],
+    ))
 
-    # --- people & messages ---
-    admin.add_view(PersonView(User))
-    admin.add_view(NotificationView(Notification))
-    admin.add_view(TemplateView(NotificationTemplate))
+    # --- Messagerie ---
+    admin.add_view(DropDown(
+        "Messagerie", icon="fa fa-bell",
+        views=[
+            NotificationView(Notification),
+            TemplateView(NotificationTemplate),
+        ],
+    ))
 
-    # --- reference / settings ---
-    admin.add_view(CourierView(Courier))
-    admin.add_view(DeliveryRateView(DeliveryRate))
-    admin.add_view(RegionView(Region))
-    admin.add_view(DivisionView(Division))
-    admin.add_view(SubdivisionView(Subdivision))
-    admin.add_view(NeighbourhoodView(Neighbourhood))
-    admin.add_view(FixedRateCityView(FixedRateCity))
-    admin.add_view(AppSettingView(AppSetting))
+    # --- Personnes & sécurité ---
+    admin.add_view(DropDown(
+        "Personnes & sécurité", icon="fa fa-users",
+        views=[
+            PersonView(User),
+            UserView(User),
+            RefreshTokenView(RefreshToken),
+            DeviceTokenView(DeviceToken),
+            PasswordResetTokenView(PasswordResetToken),
+            AuditLogView(AuditLog),
+        ],
+    ))
+
+    # --- Paramètres & référentiel ---
+    admin.add_view(DropDown(
+        "Paramètres & référentiel", icon="fa fa-sliders",
+        views=[
+            CourierView(Courier),
+            DeliveryRateView(DeliveryRate),
+            RegionView(Region),
+            DivisionView(Division),
+            SubdivisionView(Subdivision),
+            NeighbourhoodView(Neighbourhood),
+            FixedRateCityView(FixedRateCity),
+            AppSettingView(AppSetting),
+        ],
+    ))
     return admin
 
 
