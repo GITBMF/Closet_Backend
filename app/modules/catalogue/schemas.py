@@ -75,7 +75,13 @@ class MediaMeta(BaseModel):
 
 # ------------------------------------------------------------------- pieces
 class PieceSummary(_ORMModel):
-    """List/browse card — the trimmed shape used in grids."""
+    """List/browse card — the trimmed shape used in grids.
+
+    Carries the piece's images so a grid can render a thumbnail without a
+    second request: `image_url` is the primary photo (first image in display
+    order) and `images` is every image URL in order. Both are derived from the
+    piece's media; build instances with `from_piece()` so the derivation runs.
+    """
 
     id: uuid.UUID
     sku: str
@@ -89,15 +95,44 @@ class PieceSummary(_ORMModel):
     house_id: uuid.UUID | None
     universe_id: uuid.UUID | None
     published_at: datetime | None
+    image_url: str | None = None       # primary image (first by position), or None
+    images: list[str] = []             # all image URLs, in display order
+
+    @classmethod
+    def from_piece(cls, piece) -> "PieceSummary":
+        """Build a summary from an ORM Piece, deriving the image fields from its
+        media (images only, in display order).
+
+        Requires `piece.media` to be loaded — the browse/search/wishlist queries
+        eager-load it. If media isn't loaded this degrades to no images rather
+        than raising, so it's safe on any Piece.
+        """
+        obj = cls.model_validate(piece)
+        media = getattr(piece, "media", None) or []
+        urls = [m.url for m in media if m.media_type is MediaType.IMAGE]
+        obj.image_url = urls[0] if urls else None
+        obj.images = urls
+        return obj
 
 
 class PieceDetail(PieceSummary):
-    """Full piece view — adds description, story and media."""
+    """Full piece view — adds description, story and the full media list."""
 
     description: str | None
     story: str | None
     media: list[MediaOut] = []
     in_wishlist: bool = False   # filled when an authenticated user views it
+
+    @classmethod
+    def from_piece(cls, piece) -> "PieceDetail":
+        """Build a full detail view, including the image_url/images shortcuts
+        (inherited) AND the complete media list."""
+        obj = cls.model_validate(piece)   # maps media -> list[MediaOut] too
+        media = getattr(piece, "media", None) or []
+        urls = [m.url for m in media if m.media_type is MediaType.IMAGE]
+        obj.image_url = urls[0] if urls else None
+        obj.images = urls
+        return obj
 
 
 class PieceCreate(BaseModel):
