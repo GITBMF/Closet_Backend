@@ -1,0 +1,14 @@
+{% extends "@starlette-admin/base.html" %}
+
+{# Additive overrides: keep everything Starlette-Admin renders, then append
+   the ops console's responsive stylesheet and sidebar-state script. #}
+
+{% block head_css %}
+  {{ super() }}
+  {% include "ops_responsive.css.html" %}
+{% endblock %}
+
+{% block script %}
+  {{ super() }}
+  {% include "ops_sidebar.js.html" %}
+{% endblock %}
