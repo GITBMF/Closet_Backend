@@ -97,6 +97,13 @@ def generate_opaque_token(nbytes: int = 32) -> str:
     return secrets.token_urlsafe(nbytes)
 
 
+def generate_numeric_code(digits: int = 6) -> str:
+    """A short numeric code (e-mail verification). Cryptographically random and
+    zero-padded, e.g. "042317". Stored only as a hash via hash_opaque_token."""
+    upper = 10 ** digits
+    return f"{secrets.randbelow(upper):0{digits}d}"
+
+
 def hash_opaque_token(token: str) -> str:
     """Only the hash is ever stored, so a DB leak does not yield live tokens."""
     return hashlib.sha256(token.encode("utf-8")).hexdigest()

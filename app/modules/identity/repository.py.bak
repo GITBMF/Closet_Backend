@@ -175,22 +175,6 @@ class IdentityRepository:
             .values(used_at=datetime.now(UTC))
         )
 
-    async def get_active_password_reset(
-        self, user_id: uuid.UUID
-    ) -> PasswordResetToken | None:
-        """The newest unused, unexpired reset code for this user, if any."""
-        stmt = (
-            select(PasswordResetToken)
-            .where(
-                PasswordResetToken.user_id == user_id,
-                PasswordResetToken.used_at.is_(None),
-                PasswordResetToken.expires_at > datetime.now(UTC),
-            )
-            .order_by(PasswordResetToken.created_at.desc())
-            .limit(1)
-        )
-        return (await self.db.execute(stmt)).scalar_one_or_none()
-
     # ----------------------------------------------------- device tokens
     async def upsert_device_token(
         self, *, user_id: uuid.UUID, token: str, platform: str, marketing_opt_in: bool

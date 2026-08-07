@@ -79,8 +79,7 @@ class ForgotPasswordRequest(BaseModel):
 
 
 class ResetPasswordRequest(BaseModel):
-    email: EmailStr
-    code: str = Field(min_length=4, max_length=10, pattern=r"^\d+$")
+    token: str
     new_password: Password
 
     _pw = field_validator("new_password")(_validate_password)

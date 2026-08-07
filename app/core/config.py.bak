@@ -42,11 +42,7 @@ class Settings(BaseSettings):
     EMAIL_VERIFICATION_TTL_MINUTES: int = 15
     EMAIL_VERIFICATION_MAX_ATTEMPTS: int = 5
     # When True, login is blocked until the e-mail is verified.
-    REQUIRE_EMAIL_VERIFICATION: bool = True
-    # ---- password reset (6-digit code, mobile-friendly) -------------
-    PASSWORD_RESET_CODE_DIGITS: int = 6
-    PASSWORD_RESET_TTL_MINUTES: int = 15
-    PASSWORD_RESET_MAX_ATTEMPTS: int = 5   
+    REQUIRE_EMAIL_VERIFICATION: bool = True   
     
     # ---- e-mail delivery (provider-agnostic) ------------------------
     # Sender identity — used by whichever provider is active.

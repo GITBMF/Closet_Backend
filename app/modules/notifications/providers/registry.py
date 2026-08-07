@@ -14,11 +14,15 @@ from functools import lru_cache
 from app.core.config import settings
 from app.modules.notifications.constants import NotificationChannel
 from app.modules.notifications.providers.base import ChannelProvider
+from app.modules.notifications.providers.brevo import BrevoProvider
 from app.modules.notifications.providers.console import ConsoleProvider
+from app.modules.notifications.providers.resend import ResendProvider
 
 # As real adapters are written, add them here, e.g. "twilio": TwilioProvider.
 _BUILDERS: dict[str, type[ChannelProvider]] = {
     "console": ConsoleProvider,
+    "brevo": BrevoProvider,
+    "resend": ResendProvider,
 }
 
 

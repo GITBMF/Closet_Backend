@@ -151,7 +151,7 @@ async def forgot_password(
             "auth.password_reset",
             channel=NotificationChannel.EMAIL,
             to_email=payload.email,
-            context={"code": token, "ttl_minutes": settings.PASSWORD_RESET_TTL_MINUTES},
+            context={"code": token, "ttl_hours": settings.PASSWORD_RESET_HOURS},
         )
     # Same answer whether or not the account exists (no enumeration).
     return MessageResponse(
@@ -168,10 +168,7 @@ async def reset_password(
     payload: ResetPasswordRequest, service: Service, ctx: Ctx
 ) -> MessageResponse:
     await service.reset_password(
-        email=payload.email,
-        code=payload.code,
-        new_password=payload.new_password,
-        ctx=ctx,
+        raw_token=payload.token, new_password=payload.new_password, ctx=ctx
     )
     return MessageResponse(message="Mot de passe réinitialisé. Vous pouvez vous connecter.")
 

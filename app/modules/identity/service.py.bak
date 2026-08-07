@@ -383,13 +383,13 @@ class IdentityService:
             return None
 
         await self.repo.invalidate_password_resets(user.id)
-        raw = security.generate_numeric_code(settings.PASSWORD_RESET_CODE_DIGITS)
+        raw = security.generate_opaque_token()
         await self.repo.add_password_reset(
             PasswordResetToken(
                 user_id=user.id,
                 token_hash=security.hash_opaque_token(raw),
                 expires_at=datetime.now(UTC)
-                + timedelta(minutes=settings.PASSWORD_RESET_TTL_MINUTES),
+                + timedelta(hours=settings.PASSWORD_RESET_HOURS),
             )
         )
         await self.repo.add_audit(
@@ -404,33 +404,19 @@ class IdentityService:
         return raw
 
     async def reset_password(
-        self, *, email: str, code: str, new_password: str, ctx: RequestContext
+        self, *, raw_token: str, new_password: str, ctx: RequestContext
     ) -> None:
-        # Mobile-friendly reset: verify the 6-digit code we e-mailed. Because the
-        # code is short, the lookup is scoped to the user AND attempt-throttled
-        # (a bare hash lookup would be brute-forceable, unlike the old long token).
-        # Neutral errors avoid revealing whether the e-mail exists.
-        user = await self.repo.get_by_email(email)
-        if user is None:
-            raise ValidationError("Code invalide.", code="invalid_code")
+        record = await self.repo.get_password_reset(
+            security.hash_opaque_token(raw_token)
+        )
+        if record is None or record.used_at is not None:
+            raise ValidationError("Lien de réinitialisation invalide.", code="invalid_token")
+        if record.expires_at <= datetime.now(UTC):
+            raise ValidationError("Lien de réinitialisation expiré.", code="expired_token")
 
-        record = await self.repo.get_active_password_reset(user.id)
-        if record is None:
-            raise ValidationError(
-                "Code expiré ou introuvable. Demandez un nouveau code.",
-                code="code_expired",
-            )
-        if record.attempts >= settings.PASSWORD_RESET_MAX_ATTEMPTS:
-            raise ValidationError(
-                "Trop de tentatives. Demandez un nouveau code.",
-                code="too_many_attempts",
-            )
-        if not security.compare_digest(
-            record.token_hash, security.hash_opaque_token(code)
-        ):
-            record.attempts += 1
-            await self.db.commit()
-            raise ValidationError("Code invalide.", code="invalid_code")
+        user = await self.repo.get_user(record.user_id)
+        if user is None:
+            raise NotFoundError("Compte introuvable.")
 
         record.used_at = datetime.now(UTC)
         user.password_hash = security.hash_password(new_password)
