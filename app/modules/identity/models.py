@@ -47,6 +47,10 @@ class User(UUIDPrimaryKey, Timestamped, SoftDelete, Base):
     full_name: Mapped[str] = mapped_column(String(150), nullable=False)
     city: Mapped[str | None] = mapped_column(String(100))
 
+    # --- profile picture ----------------------------------------------
+    avatar_url: Mapped[str | None] = mapped_column(String(1024))
+    avatar_key: Mapped[str | None] = mapped_column(String(512))
+
     password_hash: Mapped[str | None] = mapped_column(String(255))
 
     role: Mapped[UserRole] = mapped_column(

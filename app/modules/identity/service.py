@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import security
 from app.core.config import settings
+from app.core.storage import StorageError, StorageProvider
 from app.core.exceptions import (
     AuthenticationError,
     ConflictError,
@@ -73,9 +74,78 @@ def actor_type_for(role: UserRole) -> ActorType:
 
 
 class IdentityService:
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(
+        self, db: AsyncSession, storage: StorageProvider | None = None
+    ) -> None:
         self.db = db
         self.repo = IdentityRepository(db)
+        self._storage = storage
+
+    # ==================================================== avatar
+    _AVATAR_EXT = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
+
+    async def set_avatar(
+        self, *, user: User, data: bytes, content_type: str
+    ) -> User:
+        """Validate + upload a profile picture, then point the user at it.
+
+        Mirrors the catalogue media rules: same allowed types, same size cap,
+        same object-storage backend. Replacing an avatar deletes the old object
+        best-effort so we do not orphan files.
+        """
+        if content_type not in settings.MEDIA_ALLOWED_TYPES:
+            raise ValidationError(
+                f"Type de fichier non supporté: {content_type}.",
+                code="unsupported_media_type",
+            )
+        if len(data) == 0:
+            raise ValidationError("Fichier vide.", code="empty_file")
+        if len(data) > settings.MEDIA_MAX_BYTES:
+            raise ValidationError(
+                "Fichier trop volumineux.", code="file_too_large"
+            )
+        if self._storage is None:
+            raise ValidationError(
+                "Stockage indisponible.", code="storage_unavailable"
+            )
+
+        ext = self._AVATAR_EXT.get(content_type, "bin")
+        key = f"avatars/{user.id}/{uuid.uuid4().hex}.{ext}"
+        try:
+            stored = await self._storage.put(
+                key=key, data=data, content_type=content_type
+            )
+        except StorageError as exc:
+            raise ValidationError(
+                "Échec du téléversement.", code="upload_failed"
+            ) from exc
+
+        old_key = user.avatar_key
+        user.avatar_url = stored.url
+        user.avatar_key = key
+        await self.db.commit()
+        await self.db.refresh(user)
+
+        if old_key and old_key != key:
+            try:
+                await self._storage.delete(key=old_key)
+            except StorageError:
+                pass
+        return user
+
+    async def remove_avatar(self, *, user: User) -> User:
+        """Clear a user's profile picture (best-effort delete of the object)."""
+        old_key = user.avatar_key
+        user.avatar_url = None
+        user.avatar_key = None
+        await self.db.commit()
+        await self.db.refresh(user)
+        if old_key and self._storage is not None:
+            try:
+                await self._storage.delete(key=old_key)
+            except StorageError:
+                pass
+        return user
 
     # =================================================== registration
     async def register(

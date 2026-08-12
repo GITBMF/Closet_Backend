@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import security
 from app.core.database import get_db
+from app.core.storage import get_storage
 from app.core.exceptions import AuthenticationError, PermissionDeniedError
 from app.modules.identity.constants import Permission, TokenType, UserRole, role_has
 from app.modules.identity.models import User
@@ -38,7 +39,7 @@ def get_request_context(request: Request) -> RequestContext:
 
 
 def get_identity_service(db: Annotated[AsyncSession, Depends(get_db)]) -> IdentityService:
-    return IdentityService(db)
+    return IdentityService(db, storage=get_storage())
 
 
 async def get_current_user(

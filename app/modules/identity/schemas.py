@@ -154,6 +154,7 @@ class UserPublic(BaseModel):
     full_name: str
     phone: str | None
     city: str | None
+    avatar_url: str | None = None
     role: UserRole
     is_active: bool
     mfa_enabled: bool = False
@@ -169,6 +170,7 @@ class UserPublic(BaseModel):
             full_name=user.full_name,
             phone=user.phone,
             city=user.city,
+            avatar_url=user.avatar_url,
             role=user.role,
             is_active=user.is_active,
             mfa_enabled=user.mfa_enabled,

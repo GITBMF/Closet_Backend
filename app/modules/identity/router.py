@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, File, Query, Response, UploadFile, status
 
 from app.core.config import settings
 from app.modules.notifications.constants import NotificationChannel
@@ -247,6 +247,35 @@ async def change_password(
     return MessageResponse(
         message="Mot de passe modifié. Toutes vos sessions ont été fermées."
     )
+
+
+@router.post(
+    "/me/avatar",
+    response_model=UserPublic,
+    summary="Téléverser ma photo de profil",
+)
+async def upload_avatar(
+    user: CurrentUser,
+    service: Service,
+    file: UploadFile = File(...),
+) -> UserPublic:
+    data = await file.read()
+    updated = await service.set_avatar(
+        user=user,
+        data=data,
+        content_type=file.content_type or "application/octet-stream",
+    )
+    return UserPublic.from_user(updated)
+
+
+@router.delete(
+    "/me/avatar",
+    response_model=UserPublic,
+    summary="Supprimer ma photo de profil",
+)
+async def delete_avatar(user: CurrentUser, service: Service) -> UserPublic:
+    updated = await service.remove_avatar(user=user)
+    return UserPublic.from_user(updated)
 
 
 @router.post(
