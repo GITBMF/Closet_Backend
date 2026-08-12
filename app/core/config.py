@@ -81,6 +81,12 @@ class Settings(BaseSettings):
     # ---- internal ops panel (Starlette-Admin) ------------------------
     OPS_ENABLED: bool = True          # set false in staging/production
     OPS_ALLOW_IN_PROD: bool = False   # extra guard, see app/ops/admin.py
+
+    # Seed Cameroon's geo reference data (regions / divisions / subdivisions
+    # / cities / neighbourhoods) on startup. Off by default; turn it on for
+    # the deployment where you want the database populated. Idempotent, so
+    # leaving it on is harmless once seeded.
+    SEED_GEO_ON_STARTUP: bool = True
     OPS_BASE_URL: str = "/ops"
     OPS_SESSION_SECRET: str = ""      # falls back to JWT_SECRET
     OPS_LOGO_URL: str = ""
