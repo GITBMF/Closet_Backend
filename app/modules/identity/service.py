@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import security
 from app.core.config import settings
+from app.core.storage import StorageError, StorageProvider
 from app.core.exceptions import (
     AuthenticationError,
     ConflictError,
@@ -29,7 +30,12 @@ from app.modules.identity.constants import (
     UserRole,
     permissions_for,
 )
-from app.modules.identity.models import PasswordResetToken, RefreshToken, User
+from app.modules.identity.models import (
+    EmailVerificationCode,
+    PasswordResetToken,
+    RefreshToken,
+    User,
+)
 from app.modules.identity.repository import IdentityRepository
 
 
@@ -68,9 +74,78 @@ def actor_type_for(role: UserRole) -> ActorType:
 
 
 class IdentityService:
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(
+        self, db: AsyncSession, storage: StorageProvider | None = None
+    ) -> None:
         self.db = db
         self.repo = IdentityRepository(db)
+        self._storage = storage
+
+    # ==================================================== avatar
+    _AVATAR_EXT = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
+
+    async def set_avatar(
+        self, *, user: User, data: bytes, content_type: str
+    ) -> User:
+        """Validate + upload a profile picture, then point the user at it.
+
+        Mirrors the catalogue media rules: same allowed types, same size cap,
+        same object-storage backend. Replacing an avatar deletes the old object
+        best-effort so we do not orphan files.
+        """
+        if content_type not in settings.MEDIA_ALLOWED_TYPES:
+            raise ValidationError(
+                f"Type de fichier non supporté: {content_type}.",
+                code="unsupported_media_type",
+            )
+        if len(data) == 0:
+            raise ValidationError("Fichier vide.", code="empty_file")
+        if len(data) > settings.MEDIA_MAX_BYTES:
+            raise ValidationError(
+                "Fichier trop volumineux.", code="file_too_large"
+            )
+        if self._storage is None:
+            raise ValidationError(
+                "Stockage indisponible.", code="storage_unavailable"
+            )
+
+        ext = self._AVATAR_EXT.get(content_type, "bin")
+        key = f"avatars/{user.id}/{uuid.uuid4().hex}.{ext}"
+        try:
+            stored = await self._storage.put(
+                key=key, data=data, content_type=content_type
+            )
+        except StorageError as exc:
+            raise ValidationError(
+                "Échec du téléversement.", code="upload_failed"
+            ) from exc
+
+        old_key = user.avatar_key
+        user.avatar_url = stored.url
+        user.avatar_key = key
+        await self.db.commit()
+        await self.db.refresh(user)
+
+        if old_key and old_key != key:
+            try:
+                await self._storage.delete(key=old_key)
+            except StorageError:
+                pass
+        return user
+
+    async def remove_avatar(self, *, user: User) -> User:
+        """Clear a user's profile picture (best-effort delete of the object)."""
+        old_key = user.avatar_key
+        user.avatar_url = None
+        user.avatar_key = None
+        await self.db.commit()
+        await self.db.refresh(user)
+        if old_key and self._storage is not None:
+            try:
+                await self._storage.delete(key=old_key)
+            except StorageError:
+                pass
+        return user
 
     # =================================================== registration
     async def register(
@@ -114,6 +189,9 @@ class IdentityService:
         )
         await self.db.commit()
         await self.db.refresh(user)
+        # Issue + e-mail a verification code (best-effort: a mail hiccup must not
+        # fail the registration — the user can request a resend).
+        await self._issue_email_verification(user)
         return user
 
     # ========================================================== login
@@ -141,6 +219,16 @@ class IdentityService:
         if not user.is_active:
             raise PermissionDeniedError(
                 "Ce compte est désactivé.", code="account_disabled"
+            )
+
+        if (
+            settings.REQUIRE_EMAIL_VERIFICATION
+            and user.email is not None
+            and user.email_verified_at is None
+        ):
+            raise PermissionDeniedError(
+                "Veuillez vérifier votre adresse e-mail avant de vous connecter.",
+                code="email_not_verified",
             )
 
         # Password is correct — reset the counter before any 2FA step.
@@ -365,13 +453,13 @@ class IdentityService:
             return None
 
         await self.repo.invalidate_password_resets(user.id)
-        raw = security.generate_opaque_token()
+        raw = security.generate_numeric_code(settings.PASSWORD_RESET_CODE_DIGITS)
         await self.repo.add_password_reset(
             PasswordResetToken(
                 user_id=user.id,
                 token_hash=security.hash_opaque_token(raw),
                 expires_at=datetime.now(UTC)
-                + timedelta(hours=settings.PASSWORD_RESET_HOURS),
+                + timedelta(minutes=settings.PASSWORD_RESET_TTL_MINUTES),
             )
         )
         await self.repo.add_audit(
@@ -386,19 +474,33 @@ class IdentityService:
         return raw
 
     async def reset_password(
-        self, *, raw_token: str, new_password: str, ctx: RequestContext
+        self, *, email: str, code: str, new_password: str, ctx: RequestContext
     ) -> None:
-        record = await self.repo.get_password_reset(
-            security.hash_opaque_token(raw_token)
-        )
-        if record is None or record.used_at is not None:
-            raise ValidationError("Lien de réinitialisation invalide.", code="invalid_token")
-        if record.expires_at <= datetime.now(UTC):
-            raise ValidationError("Lien de réinitialisation expiré.", code="expired_token")
-
-        user = await self.repo.get_user(record.user_id)
+        # Mobile-friendly reset: verify the 6-digit code we e-mailed. Because the
+        # code is short, the lookup is scoped to the user AND attempt-throttled
+        # (a bare hash lookup would be brute-forceable, unlike the old long token).
+        # Neutral errors avoid revealing whether the e-mail exists.
+        user = await self.repo.get_by_email(email)
         if user is None:
-            raise NotFoundError("Compte introuvable.")
+            raise ValidationError("Code invalide.", code="invalid_code")
+
+        record = await self.repo.get_active_password_reset(user.id)
+        if record is None:
+            raise ValidationError(
+                "Code expiré ou introuvable. Demandez un nouveau code.",
+                code="code_expired",
+            )
+        if record.attempts >= settings.PASSWORD_RESET_MAX_ATTEMPTS:
+            raise ValidationError(
+                "Trop de tentatives. Demandez un nouveau code.",
+                code="too_many_attempts",
+            )
+        if not security.compare_digest(
+            record.token_hash, security.hash_opaque_token(code)
+        ):
+            record.attempts += 1
+            await self.db.commit()
+            raise ValidationError("Code invalide.", code="invalid_code")
 
         record.used_at = datetime.now(UTC)
         user.password_hash = security.hash_password(new_password)
@@ -416,6 +518,107 @@ class IdentityService:
             ip_address=ctx.ip,
         )
         await self.db.commit()
+
+    # ==================================================== e-mail verification
+    async def _issue_email_verification(self, user: User) -> None:
+        """Generate a fresh code, store its hash, and e-mail it. Best-effort:
+        never raises into the caller (registration/resend must not fail on a
+        mail problem). Any previous unused codes for this user are invalidated.
+        """
+        if user.email is None:
+            return
+
+        await self.repo.invalidate_email_verifications(user.id)
+
+        code = security.generate_numeric_code(settings.EMAIL_VERIFICATION_CODE_DIGITS)
+        await self.repo.add_email_verification(
+            EmailVerificationCode(
+                user_id=user.id,
+                code_hash=security.hash_opaque_token(code),
+                expires_at=datetime.now(UTC)
+                + timedelta(minutes=settings.EMAIL_VERIFICATION_TTL_MINUTES),
+            )
+        )
+        await self.repo.add_audit(
+            action=AuditAction.EMAIL_VERIFICATION_SENT,
+            entity_type="user",
+            entity_id=str(user.id),
+            actor_type=ActorType.SYSTEM,
+            actor_id=user.id,
+        )
+        await self.db.commit()
+
+        # send() uses its OWN committed transaction and never raises for a
+        # delivery problem, so this can't break registration.
+        from app.modules.notifications.constants import NotificationChannel
+        from app.modules.notifications.dependencies import get_notification_service
+
+        notifier = get_notification_service(self.db)
+        await notifier.send(
+            "auth.email_verification",
+            channel=NotificationChannel.EMAIL,
+            to_email=user.email,
+            context={
+                "full_name": user.full_name,
+                "code": code,
+                "ttl_minutes": settings.EMAIL_VERIFICATION_TTL_MINUTES,
+            },
+        )
+
+    async def verify_email(
+        self, *, email: str, code: str, ctx: RequestContext
+    ) -> None:
+        """Confirm the code. On success, stamps user.email_verified_at."""
+        user = await self.repo.get_by_email(email)
+        if user is None:
+            raise ValidationError("Code invalide.", code="invalid_code")
+        if user.email_verified_at is not None:
+            return  # already verified — idempotent
+
+        record = await self.repo.get_active_email_verification(user.id)
+        if record is None:
+            raise ValidationError(
+                "Code expiré ou introuvable. Demandez un nouveau code.",
+                code="code_expired",
+            )
+        if record.attempts >= settings.EMAIL_VERIFICATION_MAX_ATTEMPTS:
+            raise ValidationError(
+                "Trop de tentatives. Demandez un nouveau code.",
+                code="too_many_attempts",
+            )
+        if not security.compare_digest(
+            record.code_hash, security.hash_opaque_token(code)
+        ):
+            record.attempts += 1
+            await self.db.commit()
+            raise ValidationError("Code invalide.", code="invalid_code")
+
+        now = datetime.now(UTC)
+        record.used_at = now
+        user.email_verified_at = now
+        await self.repo.add_audit(
+            action=AuditAction.EMAIL_VERIFIED,
+            entity_type="user",
+            entity_id=str(user.id),
+            actor_type=ActorType.CUSTOMER,
+            actor_id=user.id,
+            ip_address=ctx.ip,
+            user_agent=ctx.user_agent,
+        )
+        await self.db.commit()
+
+    async def resend_email_verification(
+        self, *, email: str, ctx: RequestContext
+    ) -> None:
+        """Issue a fresh code if the account exists and isn't verified yet.
+
+        The router answers with the same neutral message whether or not the
+        account exists (no enumeration).
+        """
+        user = await self.repo.get_by_email(email)
+        if user is None or not user.is_active or user.email_verified_at is not None:
+            return
+        await self._issue_email_verification(user)
 
     # =========================================================== 2FA
     async def start_mfa_setup(self, *, user: User) -> tuple[str, str, list[str]]:

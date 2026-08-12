@@ -138,6 +138,8 @@ def role_has(role: UserRole, permission: Permission) -> bool:
 # --- audit actions -----------------------------------------------------
 class AuditAction(StrEnum):
     USER_REGISTERED = "user.registered"
+    EMAIL_VERIFICATION_SENT = "user.email_verification_sent"
+    EMAIL_VERIFIED = "user.email_verified"
     USER_LOGGED_IN = "user.logged_in"
     USER_LOGIN_FAILED = "user.login_failed"
     USER_LOCKED = "user.locked"

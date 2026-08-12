@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.identity.constants import ActorType, UserRole
 from app.modules.identity.models import (
+    EmailVerificationCode,
     AuditLog,
     DeviceToken,
     PasswordResetToken,
@@ -139,6 +140,56 @@ class IdentityRepository:
             )
             .values(used_at=datetime.now(UTC))
         )
+
+    # ------------------------------------------------ e-mail verification
+    async def add_email_verification(
+        self, code: EmailVerificationCode
+    ) -> EmailVerificationCode:
+        self.db.add(code)
+        await self.db.flush()
+        return code
+
+    async def get_active_email_verification(
+        self, user_id: uuid.UUID
+    ) -> EmailVerificationCode | None:
+        """The newest unused, unexpired code for this user, if any."""
+        stmt = (
+            select(EmailVerificationCode)
+            .where(
+                EmailVerificationCode.user_id == user_id,
+                EmailVerificationCode.used_at.is_(None),
+                EmailVerificationCode.expires_at > datetime.now(UTC),
+            )
+            .order_by(EmailVerificationCode.created_at.desc())
+            .limit(1)
+        )
+        return (await self.db.execute(stmt)).scalar_one_or_none()
+
+    async def invalidate_email_verifications(self, user_id: uuid.UUID) -> None:
+        await self.db.execute(
+            update(EmailVerificationCode)
+            .where(
+                EmailVerificationCode.user_id == user_id,
+                EmailVerificationCode.used_at.is_(None),
+            )
+            .values(used_at=datetime.now(UTC))
+        )
+
+    async def get_active_password_reset(
+        self, user_id: uuid.UUID
+    ) -> PasswordResetToken | None:
+        """The newest unused, unexpired reset code for this user, if any."""
+        stmt = (
+            select(PasswordResetToken)
+            .where(
+                PasswordResetToken.user_id == user_id,
+                PasswordResetToken.used_at.is_(None),
+                PasswordResetToken.expires_at > datetime.now(UTC),
+            )
+            .order_by(PasswordResetToken.created_at.desc())
+            .limit(1)
+        )
+        return (await self.db.execute(stmt)).scalar_one_or_none()
 
     # ----------------------------------------------------- device tokens
     async def upsert_device_token(

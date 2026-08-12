@@ -13,6 +13,7 @@ from app.core.database import engine
 from app.core.exceptions import register_exception_handlers
 from app.db import registry as _registry  # noqa: F401 — registers all models/FKs
 from app.modules.identity.bootstrap import ensure_bootstrap_admin
+from app.modules.geo.seed import ensure_geo_seeded
 from app.ops.admin import mount_ops
 
 
@@ -20,6 +21,7 @@ from app.ops.admin import mount_ops
 async def lifespan(_: FastAPI):
     # Creates the first administrator when configured; no-op otherwise.
     await ensure_bootstrap_admin()
+    await ensure_geo_seeded()
     yield
     await engine.dispose()
 

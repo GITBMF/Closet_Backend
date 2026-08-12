@@ -79,7 +79,8 @@ class ForgotPasswordRequest(BaseModel):
 
 
 class ResetPasswordRequest(BaseModel):
-    token: str
+    email: EmailStr
+    code: str = Field(min_length=4, max_length=10, pattern=r"^\d+$")
     new_password: Password
 
     _pw = field_validator("new_password")(_validate_password)
@@ -153,6 +154,7 @@ class UserPublic(BaseModel):
     full_name: str
     phone: str | None
     city: str | None
+    avatar_url: str | None = None
     role: UserRole
     is_active: bool
     mfa_enabled: bool = False
@@ -168,6 +170,7 @@ class UserPublic(BaseModel):
             full_name=user.full_name,
             phone=user.phone,
             city=user.city,
+            avatar_url=user.avatar_url,
             role=user.role,
             is_active=user.is_active,
             mfa_enabled=user.mfa_enabled,
@@ -239,3 +242,16 @@ class AuditEntry(BaseModel):
 class AuditPage(BaseModel):
     items: list[AuditEntry]
     meta: PageMeta
+
+
+class VerifyEmailRequest(BaseModel):
+    """Submit the 6-digit code from the verification e-mail."""
+
+    email: EmailStr
+    code: str = Field(min_length=4, max_length=10, pattern=r"^\d+$")
+
+
+class ResendVerificationRequest(BaseModel):
+    """Ask for a fresh verification code to be e-mailed."""
+
+    email: EmailStr

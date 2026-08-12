@@ -47,6 +47,10 @@ class User(UUIDPrimaryKey, Timestamped, SoftDelete, Base):
     full_name: Mapped[str] = mapped_column(String(150), nullable=False)
     city: Mapped[str | None] = mapped_column(String(100))
 
+    # --- profile picture ----------------------------------------------
+    avatar_url: Mapped[str | None] = mapped_column(String(1024))
+    avatar_key: Mapped[str | None] = mapped_column(String(512))
+
     password_hash: Mapped[str | None] = mapped_column(String(255))
 
     role: Mapped[UserRole] = mapped_column(
@@ -76,6 +80,9 @@ class User(UUIDPrimaryKey, Timestamped, SoftDelete, Base):
     )
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # --- e-mail verification ------------------------------------------
+    # NULL until the user enters the code we e-mailed at registration.
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     refresh_tokens: Mapped[list[RefreshToken]] = relationship(
         back_populates="user", cascade="all, delete-orphan", lazy="selectin"
@@ -89,6 +96,10 @@ class User(UUIDPrimaryKey, Timestamped, SoftDelete, Base):
     @property
     def is_deleted(self) -> bool:
         return self.deleted_at is not None
+
+    @property
+    def email_verified(self) -> bool:
+        return self.email_verified_at is not None
 
     @property
     def mfa_enabled(self) -> bool:
@@ -173,6 +184,7 @@ class PasswordResetToken(UUIDPrimaryKey, Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -203,4 +215,26 @@ class AuditLog(Base):
 
     __table_args__ = (
         Index("ix_audit_entity", "entity_type", "entity_id"),
+    )
+
+
+class EmailVerificationCode(UUIDPrimaryKey, Base):
+    """A short numeric code e-mailed at registration to prove the address is real.
+
+    Only the SHA-256 hash of the code is stored (like password-reset tokens), so
+    a DB leak never yields a live code. `attempts` throttles guessing; `used_at`
+    marks a code consumed.
+    """
+
+    __tablename__ = "email_verification_codes"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    code_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
