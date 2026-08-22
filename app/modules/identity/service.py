@@ -187,7 +187,15 @@ class IdentityService:
                 "Défi d'authentification invalide ou expiré.", code="invalid_challenge"
             )
 
-        user = await self.repo.get_user(uuid.UUID(payload["sub"]))
+        try:
+            user_id = uuid.UUID(payload["sub"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise AuthenticationError(
+                "Défi d'authentification invalide ou expiré.",
+                code="invalid_challenge",
+            ) from exc
+
+        user = await self.repo.get_user(user_id)
         if user is None or not user.is_active:
             raise AuthenticationError("Compte indisponible.", code="account_unavailable")
 

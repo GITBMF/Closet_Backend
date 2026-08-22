@@ -431,7 +431,10 @@ async def user_audit(
     page_size: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> AuditPage:
     rows, total = await service.repo.list_audit(
-        page=page, page_size=page_size, actor_id=user_id
+        page=page,
+        page_size=page_size,
+        entity_type="user",
+        entity_id=str(user_id),
     )
     return AuditPage(
         items=[AuditEntry.model_validate(r) for r in rows],

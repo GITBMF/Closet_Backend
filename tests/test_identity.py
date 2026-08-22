@@ -8,6 +8,7 @@ import pyotp
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from jose import jwt
 from sqlalchemy import text
 
 from app.core.config import settings
@@ -160,6 +161,21 @@ class TestLogin:
         body = await login(client)
         assert body["_status"] == 403
         assert body["error"]["code"] == "account_disabled"
+
+    async def test_mfa_challenge_with_malformed_subject_is_rejected(
+        self, client: AsyncClient
+    ):
+        challenge = jwt.encode(
+            {"sub": "not-a-uuid", "type": "mfa_challenge"},
+            settings.JWT_SECRET,
+            algorithm=settings.JWT_ALGORITHM,
+        )
+        r = await client.post(
+            f"{API}/auth/login/mfa",
+            json={"challenge_token": challenge, "code": "123456"},
+        )
+        assert r.status_code == 401
+        assert r.json()["error"]["code"] == "invalid_challenge"
 
 
 class TestTokens:
@@ -511,6 +527,30 @@ class TestAudit:
         )
         assert r.status_code == 200
         assert r.json()["meta"]["total"] >= 1
+
+    async def test_user_audit_includes_actions_by_an_admin(
+        self, client: AsyncClient
+    ):
+        await register(client, email="admin@closet.cm")
+        await make_admin("admin@closet.cm")
+        admin = await login(client, email="admin@closet.cm")
+        customer = await register(client)
+        headers = {"Authorization": f"Bearer {admin['access_token']}"}
+
+        changed = await client.patch(
+            f"{API}/admin/users/{customer['id']}",
+            json={"is_active": False},
+            headers=headers,
+        )
+        assert changed.status_code == 200
+
+        audit = await client.get(
+            f"{API}/admin/users/{customer['id']}/audit", headers=headers
+        )
+        assert audit.status_code == 200
+        assert "user.deactivated" in {
+            entry["action"] for entry in audit.json()["items"]
+        }
 
 
 class TestBootstrapAdmin:
