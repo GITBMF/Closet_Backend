@@ -212,6 +212,7 @@ class IdentityRepository:
         action: str | None = None,
         actor_id: uuid.UUID | None = None,
         entity_type: str | None = None,
+        entity_id: str | None = None,
     ) -> tuple[list[AuditLog], int]:
         stmt: Select = select(AuditLog)
         if action:
@@ -220,6 +221,8 @@ class IdentityRepository:
             stmt = stmt.where(AuditLog.actor_id == actor_id)
         if entity_type:
             stmt = stmt.where(AuditLog.entity_type == entity_type)
+        if entity_id:
+            stmt = stmt.where(AuditLog.entity_id == entity_id)
 
         total = (
             await self.db.execute(select(func.count()).select_from(stmt.subquery()))
