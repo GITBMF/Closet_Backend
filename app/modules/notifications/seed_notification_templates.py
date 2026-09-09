@@ -50,6 +50,11 @@ TEMPLATES: list[TemplateIn] = [
         subject="Réinitialisation de votre mot de passe ClosET",
         body="Bonjour, votre code de réinitialisation est : {token}. Il expire bientôt. Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.",
     ),
+    TemplateIn(
+        code="sourcing.application_received", channel=NotificationChannel.EMAIL, locale="fr",
+        subject="Nouvelle demande de sourceur — ClosET",
+        body="Bonjour, {applicant_name} vient de soumettre une demande d'adhésion au cercle des sourceurs sur ClosET. Connectez-vous à l'espace admin pour l'examiner, puis l'approuver ou la refuser.",
+    ),
 ]
 
 

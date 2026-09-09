@@ -84,6 +84,8 @@ async def onboarding_home(request: Request) -> Response:
     user = await _current_user(request)
     if user is None:
         return RedirectResponse("/ops", status_code=302)
+    if user.email_verified_at is None:
+        return RedirectResponse("/ops/onboarding/email", status_code=302)
     if user.must_change_password:
         return RedirectResponse("/ops/onboarding/password", status_code=302)
     if settings.ADMIN_REQUIRES_2FA and not user.mfa_enabled:
@@ -296,8 +298,92 @@ async def verify_2fa_submit(request: Request) -> Response:
     return RedirectResponse("/ops", status_code=302)
 
 
+# --------------------------------------------------- step 0: verify e-mail
+def _octx(request: Request):
+    from app.modules.identity.service import RequestContext
+    fwd = request.headers.get("x-forwarded-for")
+    ip = fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else None)
+    return RequestContext(ip=ip, user_agent=request.headers.get("user-agent"))
+
+
+async def _send_email_code(request: Request, email: str) -> None:
+    from app.core.database import AsyncSessionLocal
+    from app.modules.identity.dependencies import get_identity_service
+    try:
+        async with AsyncSessionLocal() as db:
+            await get_identity_service(db).resend_email_verification(
+                email=email, ctx=_octx(request)
+            )
+    except Exception:
+        pass  # best-effort; the operator can press "Resend"
+
+
+def _email_page(email: str, error: str = "", note: str = "") -> HTMLResponse:
+    note_html = f'<p class="step">{note}</p>' if note else ""
+    return _page(
+        "Verifier l'e-mail",
+        '<p class="step">Etape securite</p>'
+        '<h1>Verifiez votre e-mail</h1>'
+        f'<p>Un code a 6 chiffres a ete envoye a <strong>{email}</strong>. '
+        'Saisissez-le pour continuer.</p>'
+        + note_html +
+        '<form method="post">'
+        '<label>Code de verification</label>'
+        '<input name="code" inputmode="numeric" autocomplete="one-time-code" '
+        'maxlength="6" required autofocus>'
+        '<button type="submit">Verifier</button>'
+        '</form>'
+        '<form method="post" style="margin-top:.6rem">'
+        '<input type="hidden" name="action" value="resend">'
+        '<button type="submit" style="background:#efefef;color:#333">'
+        'Renvoyer le code</button>'
+        '</form>',
+        error,
+    )
+
+
+async def email_form(request: Request) -> Response:
+    user = await _current_user(request)
+    if user is None:
+        return RedirectResponse("/ops", status_code=302)
+    if user.email_verified_at is not None:
+        return RedirectResponse("/ops/onboarding", status_code=302)
+    if not request.session.get("ops_email_code_sent"):
+        await _send_email_code(request, user.email)
+        request.session["ops_email_code_sent"] = True
+    return _email_page(user.email)
+
+
+async def email_submit(request: Request) -> Response:
+    user = await _current_user(request)
+    if user is None:
+        return RedirectResponse("/ops", status_code=302)
+    if user.email_verified_at is not None:
+        return RedirectResponse("/ops/onboarding", status_code=302)
+    form = await request.form()
+    if str(form.get("action", "")) == "resend":
+        await _send_email_code(request, user.email)
+        return _email_page(user.email, note="Un nouveau code a ete envoye.")
+    code = str(form.get("code", "")).strip()
+    from app.core.exceptions import AppError
+    from app.core.database import AsyncSessionLocal
+    from app.modules.identity.dependencies import get_identity_service
+    try:
+        async with AsyncSessionLocal() as db:
+            await get_identity_service(db).verify_email(
+                email=user.email, code=code, ctx=_octx(request)
+            )
+            await db.commit()
+    except AppError as exc:
+        return _email_page(user.email, error=str(exc))
+    request.session.pop("ops_email_code_sent", None)
+    return RedirectResponse("/ops/onboarding", status_code=302)
+
+
 onboarding_routes = [
     Route("/onboarding", onboarding_home, methods=["GET"], name="ops-onboarding"),
+    Route("/onboarding/email", email_form, methods=["GET"], name="ops-onboarding-email"),
+    Route("/onboarding/email", email_submit, methods=["POST"], name="ops-onboarding-email"),
     Route("/onboarding/password", password_form, methods=["GET"], name="ops-onboarding-password"),
     Route("/onboarding/password", password_submit, methods=["POST"], name="ops-onboarding-password"),
     Route("/onboarding/mfa", mfa_form, methods=["GET"], name="ops-onboarding-mfa"),

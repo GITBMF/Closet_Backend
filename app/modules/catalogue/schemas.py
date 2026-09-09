@@ -9,8 +9,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from app.modules.catalogue.constants import (
     AcquisitionType,
@@ -18,6 +19,13 @@ from app.modules.catalogue.constants import (
     PieceCondition,
     PieceStatus,
 )
+
+# Reusable text constraints: trim surrounding whitespace, then enforce a real
+# minimum so blank / single-character junk ("a", "   ") can't be saved. Applied
+# to write models only; the *Out/detail models echo stored values unchanged.
+TitleText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=200)]
+BlurbText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=10, max_length=1000)]
+StoryText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=20, max_length=2000)]
 
 
 class _ORMModel(BaseModel):
@@ -136,11 +144,11 @@ class PieceDetail(PieceSummary):
 
 
 class PieceCreate(BaseModel):
-    title: str = Field(min_length=1, max_length=200)
+    title: TitleText
     sku: str | None = Field(default=None, max_length=64)
     slug: str | None = Field(default=None, max_length=240)
-    description: str | None = None
-    story: str | None = None
+    description: BlurbText | None = None
+    story: StoryText | None = None
     house_id: uuid.UUID | None = None
     universe_id: uuid.UUID | None = None
     size_label: str | None = Field(default=None, max_length=32)
@@ -157,9 +165,9 @@ class PieceCreate(BaseModel):
 
 
 class PieceUpdate(BaseModel):
-    title: str | None = Field(default=None, min_length=1, max_length=200)
-    description: str | None = None
-    story: str | None = None
+    title: TitleText | None = None
+    description: BlurbText | None = None
+    story: StoryText | None = None
     house_id: uuid.UUID | None = None
     universe_id: uuid.UUID | None = None
     size_label: str | None = Field(default=None, max_length=32)

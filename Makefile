@@ -50,7 +50,7 @@ migrate:  ## apply migrations (host)
 	alembic upgrade head
 
 revision:  ## autogenerate a migration:  make revision m="add pieces"
-	alembic revision --autogenerate -m "$(m)"
+	alembic revision --autogenerate -m "$(m)" --rev-id "$(id)"
 
 downgrade:  ## roll back one migration
 	alembic downgrade -1

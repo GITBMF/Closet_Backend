@@ -5,8 +5,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from app.modules.sourcing.constants import (
     CollaborationType,
@@ -16,6 +17,13 @@ from app.modules.sourcing.constants import (
     SubmissionStatus,
 )
 
+# Reusable text constraints: trim surrounding whitespace, then enforce a real
+# minimum so blank / single-character junk ("a", "   ") is rejected. Applied to
+# user-supplied INPUT fields only; *Out models echo stored values unchanged.
+NameText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=150)]
+TitleText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=200)]
+StoryText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=20, max_length=2000)]
+
 
 class _ORM(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -23,7 +31,7 @@ class _ORM(BaseModel):
 
 # ------------------------------------------------------- applications
 class ApplyIn(BaseModel):
-    display_name: str | None = Field(default=None, max_length=150)
+    display_name: NameText | None = None
     phone: str | None = Field(default=None, max_length=32)
     collaboration_type: CollaborationType | None = None
     payout_method: str | None = Field(default=None, max_length=40)
@@ -56,7 +64,7 @@ class SubmissionCreate(BaseModel):
     size_label: str | None = Field(default=None, max_length=32)
     condition_claimed: str | None = Field(default=None, max_length=40)
     desired_price: Decimal | None = Field(default=None, ge=0)
-    story: str | None = None
+    story: StoryText | None = None
     share_permission: bool = False
     collection_method: CollectionMethod | None = None
 
@@ -115,7 +123,7 @@ class DecisionIn(BaseModel):
 class CatalogueIn(BaseModel):
     """Turn an accepted submission into a catalogue piece."""
 
-    title: str = Field(min_length=1, max_length=200)
+    title: TitleText
     price: Decimal = Field(ge=0)
     condition: str = Field(description="catalogue PieceCondition value")
     size_label: str | None = Field(default=None, max_length=32)
@@ -134,3 +142,14 @@ class PayoutOut(_ORM):
     provider_reference: str | None
     paid_at: datetime | None
     created_at: datetime
+
+
+# --------------------------------------------------- admin badge counts
+class SourcerApplicationCounts(BaseModel):
+    """Sourcer applications grouped by status — for an admin badge."""
+
+    pending: int = 0
+    approved: int = 0
+    rejected: int = 0
+    suspended: int = 0
+    total: int = 0

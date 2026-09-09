@@ -1,5 +1,5 @@
 """Notification service — the send() contract every module calls, plus admin
-template management.
+template and branding management.
 
 CONTRACT STABILITY is the whole point of this module (per the work-split doc):
 other modules call notifications.send(...) and must never reimplement messaging
@@ -16,7 +16,9 @@ or reach a provider directly. So two promises hold no matter what:
 
 Rendering is a safe str.format_map with a defaulting dict, so a template
 referencing a key the context didn't supply degrades to a visible placeholder
-instead of crashing.
+instead of crashing. For e-mail, the brand settings (name, logo, accent colour)
+are merged into the context so templates can use {brand_name}/{logo_url}/… and a
+branded HTML body can be rendered.
 """
 
 from __future__ import annotations
@@ -29,12 +31,29 @@ from app.modules.notifications.constants import (
     NotificationChannel,
     NotificationStatus,
 )
-from app.modules.notifications.models import Notification, NotificationTemplate
+from app.modules.notifications.models import (
+    Branding,
+    Notification,
+    NotificationTemplate,
+)
 from app.modules.notifications.providers.registry import get_provider
 from app.modules.notifications.repository import NotificationRepository
-from app.modules.notifications.schemas import TemplateIn, TemplateUpdate
+from app.modules.notifications.schemas import (
+    BrandingUpdate,
+    TemplateIn,
+    TemplateUpdate,
+)
 
 _DEFAULT_LOCALE = "fr"
+
+# Fallbacks used only if the branding singleton hasn't been created yet.
+_BRAND_DEFAULTS = {
+    "brand_name": "ClosET",
+    "logo_url": "",
+    "accent_color": "#8A5A2B",
+    "support_email": "",
+    "footer_note": "",
+}
 
 
 class _SafeDict(dict):
@@ -108,11 +127,22 @@ class NotificationService:
                     notification, f"no {channel.value} address for recipient"
                 )
 
-            subject = _render(template.subject, context) if template.subject else None
-            body = _render(template.body, context)
+            # e-mail gets the brand settings merged in, so templates can use
+            # {brand_name}/{logo_url}/{accent_color}/… and render branded HTML.
+            render_ctx = context
+            html: str | None = None
+            if channel is NotificationChannel.EMAIL:
+                render_ctx = {**(await self._branding_context()), **context}
+
+            subject = _render(template.subject, render_ctx) if template.subject else None
+            body = _render(template.body, render_ctx)
+            if channel is NotificationChannel.EMAIL and template.html_body:
+                html = _render(template.html_body, render_ctx)
 
             provider = get_provider(channel)
-            result = await provider.send_message(to=to, subject=subject, body=body)
+            result = await provider.send_message(
+                to=to, subject=subject, body=body, html=html
+            )
 
             if result.ok:
                 notification.status = NotificationStatus.SENT
@@ -161,6 +191,20 @@ class NotificationService:
             return None, None
         return user.email, user.phone
 
+    async def _branding_context(self) -> dict:
+        """Brand values for e-mail rendering. Read-only during send() (the row is
+        ensured at startup); falls back to defaults if it's somehow missing."""
+        b = await self.repo.get_branding()
+        if b is None:
+            return dict(_BRAND_DEFAULTS)
+        return {
+            "brand_name": b.brand_name or _BRAND_DEFAULTS["brand_name"],
+            "logo_url": b.logo_url or "",
+            "accent_color": b.accent_color or _BRAND_DEFAULTS["accent_color"],
+            "support_email": b.support_email or "",
+            "footer_note": b.footer_note or "",
+        }
+
     # ==================================================== admin: templates
     async def create_template(self, payload: TemplateIn) -> NotificationTemplate:
         existing = await self.repo.get_template(
@@ -173,7 +217,7 @@ class NotificationService:
             )
         template = NotificationTemplate(
             code=payload.code, channel=payload.channel, locale=payload.locale,
-            subject=payload.subject, body=payload.body,
+            subject=payload.subject, body=payload.body, html_body=payload.html_body,
         )
         await self.repo.add_template(template)
         await self.db.commit()
@@ -185,15 +229,42 @@ class NotificationService:
         template = await self.repo.get_template_by_id(template_id)
         if template is None:
             raise NotFoundError("Modèle introuvable.", code="template_not_found")
-        if payload.subject is not None:
-            template.subject = payload.subject
-        if payload.body is not None:
-            template.body = payload.body
+        fields = payload.model_dump(exclude_unset=True)
+        if "subject" in fields:
+            template.subject = fields["subject"]
+        if "body" in fields and fields["body"] is not None:
+            template.body = fields["body"]
+        if "html_body" in fields:
+            # "" clears the HTML (falls back to plain body); a string sets it.
+            template.html_body = fields["html_body"] or None
         await self.db.commit()
         return template
 
     async def list_templates(self, *, code=None, channel=None):
         return await self.repo.list_templates(code=code, channel=channel)
+
+    # ==================================================== admin: branding
+    async def get_branding(self) -> Branding:
+        """Return the branding singleton, creating it with defaults if absent."""
+        b = await self.repo.get_branding()
+        if b is None:
+            b = Branding(
+                id=1,
+                brand_name=_BRAND_DEFAULTS["brand_name"],
+                accent_color=_BRAND_DEFAULTS["accent_color"],
+            )
+            self.repo.add_branding(b)
+            await self.db.commit()
+            b = await self.repo.get_branding()
+        return b
+
+    async def update_branding(self, payload: BrandingUpdate) -> Branding:
+        b = await self.get_branding()
+        for key, value in payload.model_dump(exclude_unset=True).items():
+            setattr(b, key, value)
+        b.updated_at = datetime.now(UTC)
+        await self.db.commit()
+        return b
 
     # ==================================================== admin: dispatch log
     async def list_notifications(self, *, status=None, channel=None, user_id=None,

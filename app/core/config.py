@@ -37,6 +37,26 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_DAYS: int = 30
     # short-lived token issued between password check and 2FA code check
     MFA_CHALLENGE_MINUTES: int = 5
+    # ---- e-mail verification ----------------------------------------
+    EMAIL_VERIFICATION_CODE_DIGITS: int = 6
+    EMAIL_VERIFICATION_TTL_MINUTES: int = 15
+    EMAIL_VERIFICATION_MAX_ATTEMPTS: int = 5
+    # When True, login is blocked until the e-mail is verified.
+    REQUIRE_EMAIL_VERIFICATION: bool = True
+    # ---- password reset (6-digit code, mobile-friendly) -------------
+    PASSWORD_RESET_CODE_DIGITS: int = 6
+    PASSWORD_RESET_TTL_MINUTES: int = 15
+    PASSWORD_RESET_MAX_ATTEMPTS: int = 5   
+    
+    # ---- e-mail delivery (provider-agnostic) ------------------------
+    # Sender identity — used by whichever provider is active.
+    EMAIL_FROM_ADDRESS: str = ""            # must be a verified sender at the provider
+    EMAIL_FROM_NAME: str = "ClosET"
+    # Credentials for the selected provider (Brevo, Resend, ...).
+    EMAIL_API_KEY: str = ""
+    # Optional API base-URL override (tests / self-hosting). Empty = provider default.
+    EMAIL_API_BASE_URL: str = ""
+ 
 
     # ---- password policy --------------------------------------------
     PASSWORD_MIN_LENGTH: int = 8
@@ -61,6 +81,12 @@ class Settings(BaseSettings):
     # ---- internal ops panel (Starlette-Admin) ------------------------
     OPS_ENABLED: bool = True          # set false in staging/production
     OPS_ALLOW_IN_PROD: bool = False   # extra guard, see app/ops/admin.py
+
+    # Seed Cameroon's geo reference data (regions / divisions / subdivisions
+    # / cities / neighbourhoods) on startup. Off by default; turn it on for
+    # the deployment where you want the database populated. Idempotent, so
+    # leaving it on is harmless once seeded.
+    SEED_GEO_ON_STARTUP: bool = True
     OPS_BASE_URL: str = "/ops"
     OPS_SESSION_SECRET: str = ""      # falls back to JWT_SECRET
     OPS_LOGO_URL: str = ""

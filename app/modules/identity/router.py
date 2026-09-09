@@ -10,9 +10,11 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, File, Query, Response, UploadFile, status
 
 from app.core.config import settings
+from app.modules.notifications.constants import NotificationChannel
+from app.modules.notifications.dependencies import get_notification_service
 from app.modules.identity.constants import Permission, UserRole, permissions_for
 from app.modules.identity.dependencies import (
     Ctx,
@@ -22,6 +24,8 @@ from app.modules.identity.dependencies import (
     require_permission,
 )
 from app.modules.identity.schemas import (
+    ResendVerificationRequest,
+    VerifyEmailRequest,
     AdminChangeRoleRequest,
     AdminCreateUserRequest,
     AdminUpdateUserRequest,
@@ -138,9 +142,17 @@ async def forgot_password(
     payload: ForgotPasswordRequest, service: Service, ctx: Ctx
 ) -> MessageResponse:
     token = await service.request_password_reset(email=payload.email, ctx=ctx)
-    # TODO(notifications): send `token` by e-mail / WhatsApp when not None.
-    if settings.DEBUG and token:
-        print(f"[dev] password reset token for {payload.email}: {token}")
+    if token:
+        # request_password_reset returns a token only for an existing, active
+        # account; e-mail it. Delivery problems never raise (notifications owns
+        # its own transaction), so the neutral response below still holds.
+        notifier = get_notification_service(service.db)
+        await notifier.send(
+            "auth.password_reset",
+            channel=NotificationChannel.EMAIL,
+            to_email=payload.email,
+            context={"code": token, "ttl_minutes": settings.PASSWORD_RESET_TTL_MINUTES},
+        )
     # Same answer whether or not the account exists (no enumeration).
     return MessageResponse(
         message="Si un compte existe pour cette adresse, un lien vient d'être envoyé."
@@ -156,9 +168,40 @@ async def reset_password(
     payload: ResetPasswordRequest, service: Service, ctx: Ctx
 ) -> MessageResponse:
     await service.reset_password(
-        raw_token=payload.token, new_password=payload.new_password, ctx=ctx
+        email=payload.email,
+        code=payload.code,
+        new_password=payload.new_password,
+        ctx=ctx,
     )
     return MessageResponse(message="Mot de passe réinitialisé. Vous pouvez vous connecter.")
+
+
+@router.post(
+    "/auth/verify-email",
+    response_model=MessageResponse,
+    summary="Vérifier l'adresse e-mail avec le code reçu",
+)
+async def verify_email(
+    payload: VerifyEmailRequest, service: Service, ctx: Ctx
+) -> MessageResponse:
+    await service.verify_email(email=payload.email, code=payload.code, ctx=ctx)
+    return MessageResponse(
+        message="Adresse e-mail vérifiée. Vous pouvez maintenant vous connecter."
+    )
+
+
+@router.post(
+    "/auth/verify-email/resend",
+    response_model=MessageResponse,
+    summary="Renvoyer un code de vérification",
+)
+async def resend_verification(
+    payload: ResendVerificationRequest, service: Service, ctx: Ctx
+) -> MessageResponse:
+    await service.resend_email_verification(email=payload.email, ctx=ctx)
+    return MessageResponse(
+        message="Si un compte non vérifié existe pour cette adresse, un nouveau code vient d'être envoyé."
+    )
 
 
 # ========================================================= account
@@ -204,6 +247,35 @@ async def change_password(
     return MessageResponse(
         message="Mot de passe modifié. Toutes vos sessions ont été fermées."
     )
+
+
+@router.post(
+    "/me/avatar",
+    response_model=UserPublic,
+    summary="Téléverser ma photo de profil",
+)
+async def upload_avatar(
+    user: CurrentUser,
+    service: Service,
+    file: UploadFile = File(...),
+) -> UserPublic:
+    data = await file.read()
+    updated = await service.set_avatar(
+        user=user,
+        data=data,
+        content_type=file.content_type or "application/octet-stream",
+    )
+    return UserPublic.from_user(updated)
+
+
+@router.delete(
+    "/me/avatar",
+    response_model=UserPublic,
+    summary="Supprimer ma photo de profil",
+)
+async def delete_avatar(user: CurrentUser, service: Service) -> UserPublic:
+    updated = await service.remove_avatar(user=user)
+    return UserPublic.from_user(updated)
 
 
 @router.post(

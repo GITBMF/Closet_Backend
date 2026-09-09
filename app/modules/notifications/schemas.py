@@ -1,4 +1,4 @@
-"""Notification API contracts (admin template management + dispatch log)."""
+"""Notification API contracts (admin template + branding management, dispatch log)."""
 
 from __future__ import annotations
 
@@ -23,11 +23,13 @@ class TemplateIn(BaseModel):
     locale: str = Field(default="fr", min_length=2, max_length=5)
     subject: str | None = Field(default=None, max_length=200)
     body: str = Field(min_length=1)
+    html_body: str | None = None   # rich HTML for e-mail; null for WhatsApp/SMS
 
 
 class TemplateUpdate(BaseModel):
     subject: str | None = Field(default=None, max_length=200)
     body: str | None = Field(default=None, min_length=1)
+    html_body: str | None = None   # pass "" to clear, a string to set
 
 
 class TemplateOut(_ORM):
@@ -37,6 +39,26 @@ class TemplateOut(_ORM):
     locale: str
     subject: str | None
     body: str
+    html_body: str | None
+
+
+# ----------------------------------------------------------- branding
+class BrandingOut(_ORM):
+    id: int
+    brand_name: str
+    logo_url: str | None
+    accent_color: str
+    support_email: str | None
+    footer_note: str | None
+    updated_at: datetime
+
+
+class BrandingUpdate(BaseModel):
+    brand_name: str | None = Field(default=None, min_length=1, max_length=120)
+    logo_url: str | None = Field(default=None, max_length=1024)
+    accent_color: str | None = Field(default=None, min_length=4, max_length=9)
+    support_email: str | None = Field(default=None, max_length=255)
+    footer_note: str | None = Field(default=None, max_length=300)
 
 
 # ------------------------------------------------------- dispatch log

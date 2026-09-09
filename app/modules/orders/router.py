@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, Query, status
 from app.modules.identity.constants import Permission
 from app.modules.identity.dependencies import (
     CurrentUser,
+    OptionalShopper,
     OptionalUser,
     require_permission,
 )
@@ -43,7 +44,7 @@ admin_router = APIRouter(
 # ============================================================ public checkout
 @router.post("", response_model=OrderOut, status_code=status.HTTP_201_CREATED)
 async def checkout(
-    payload: CheckoutIn, service: Service, user: OptionalUser
+    payload: CheckoutIn, service: Service, user: OptionalShopper
 ) -> OrderOut:
     order = await service.checkout(payload, user_id=user.id if user else None)
     return OrderOut.model_validate(order)
