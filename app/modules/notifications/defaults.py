@@ -32,7 +32,8 @@ logger = logging.getLogger("closet.notifications")
 
 BRAND_DEFAULTS = {
     "brand_name": "ClosET",
-    "accent_color": "#8A5A2B",
+    "logo_url": "https://pub-72997f41ec70441cbb83ee9659237363.r2.dev/app-logo/closet-logo.png",
+    "accent_color": "#BC9746",
     "footer_note": "L'élégance durable",
 }
 
@@ -215,6 +216,7 @@ async def ensure_notification_defaults() -> None:
                 repo.add_branding(Branding(
                     id=1,
                     brand_name=BRAND_DEFAULTS["brand_name"],
+                    logo_url=BRAND_DEFAULTS["logo_url"],
                     accent_color=BRAND_DEFAULTS["accent_color"],
                     footer_note=BRAND_DEFAULTS["footer_note"],
                 ))

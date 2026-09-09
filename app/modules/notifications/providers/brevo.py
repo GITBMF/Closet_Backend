@@ -7,6 +7,12 @@ Never raises for a delivery problem; returns SendResult the service records.
 
 When the template supplies rich `html`, it is sent as-is as the HTML part;
 otherwise the plain-text `body` is wrapped in a <pre> so it still renders.
+
+Deliverability: we always send BOTH a text and an HTML part, set a reply-to, and
+add a List-Unsubscribe header (mailbox providers, Gmail especially, treat mail
+with an unsubscribe affordance more favourably). NOTE: the dominant factor in
+whether mail lands in spam is DNS authentication of the sending domain
+(SPF + DKIM + DMARC), which is configured at your DNS host / in Brevo, not here.
 """
 from __future__ import annotations
 
@@ -41,10 +47,16 @@ class BrevoProvider(ChannelProvider):
 
         payload = {
             "sender": {"name": cfg.from_name, "email": cfg.from_address},
+            "replyTo": {"name": cfg.from_name, "email": cfg.from_address},
             "to": [{"email": to}],
             "subject": subject or "",
             "textContent": body,
             "htmlContent": html if html else _fallback_html(body),
+            # A List-Unsubscribe affordance improves inbox placement (Gmail/Outlook).
+            "headers": {
+                "List-Unsubscribe": f"<mailto:{cfg.from_address}?subject=unsubscribe>",
+                "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+            },
         }
         headers = {
             "api-key": cfg.api_key,
