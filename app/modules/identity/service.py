@@ -756,6 +756,15 @@ class IdentityService:
         password: str | None,
         ctx: RequestContext,
     ) -> tuple[User, str | None]:
+        # Sourcer role is granted only through the application flow — an admin
+        # cannot create an account directly as a sourcer.
+        if role is UserRole.SOURCER:
+            raise ValidationError(
+                "Un nouveau sourceur doit passer par la phase de candidature "
+                "(demande d'adhésion puis approbation) : le rôle sourceur ne "
+                "peut pas être attribué directement.",
+                code="sourcer_requires_application",
+            )
         if await self.repo.email_exists(email):
             raise ConflictError("Un compte existe déjà avec cette adresse.", code="email_taken")
 
@@ -815,6 +824,16 @@ class IdentityService:
         previous = user.role
         if previous is role:
             return user
+
+        # Sourcer role is granted only by approving an application — never by
+        # a manual role change here.
+        if role is UserRole.SOURCER:
+            raise ValidationError(
+                "Un nouveau sourceur doit passer par la phase de candidature "
+                "(demande d'adhésion puis approbation) : le rôle sourceur ne "
+                "peut pas être attribué directement.",
+                code="sourcer_requires_application",
+            )
 
         user.role = role
         # Permissions are embedded in access tokens, so old sessions would keep

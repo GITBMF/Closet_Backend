@@ -79,7 +79,7 @@ class UserView(ModelView):
             exclude_from_list=True,
             exclude_from_detail=True,
         ),
-        "is_active", "must_change_password", "totp_enabled_at",
+        "avatar_url", "is_active", "must_change_password", "email_verified_at", "totp_enabled_at",
         "failed_login_count", "locked_until", "last_login_at",
         "created_at", "deleted_at",
     ]
@@ -87,6 +87,7 @@ class UserView(ModelView):
     exclude_fields_from_create = [
         "failed_login_count", "locked_until", "last_login_at", "deleted_at",
         "totp_enabled_at", "created_at",
+        "email_verified_at", "avatar_url",
         # is_active is forced True in before_create; hide it here so an
         # unchecked checkbox can't create an inactive account
         "is_active",
@@ -94,6 +95,9 @@ class UserView(ModelView):
     exclude_fields_from_edit = [
         "failed_login_count", "locked_until", "last_login_at", "deleted_at",
         "totp_enabled_at", "created_at",
+        # role is not editable on the form: changes go through the guarded
+        # change-role action, and sourcer must come via the application flow.
+        "role",
     ]
     searchable_fields = ["email", "full_name", "phone"]
     sortable_fields = ["email", "full_name", "role", "created_at", "last_login_at"]
@@ -108,6 +112,14 @@ class UserView(ModelView):
         sets their own on first login, and they enrol their own 2FA via
         /api/v1/me/mfa/setup afterwards.
         """
+        _role = getattr(data.get("role"), "value", data.get("role"))
+        if _role == "sourcer":
+            raise FormValidationError(
+                {"role": "Un nouveau sourceur doit passer par la phase de "
+                         "candidature (demande d'adhésion puis approbation). "
+                         "Le rôle sourceur ne peut pas être attribué "
+                         "directement."}
+            )
         raw = (data.get("password") or "").strip()
         if not raw:
             raise FormValidationError({"password": "Mot de passe requis."})
@@ -260,7 +272,7 @@ class OrderView(_ReadOnly):
         name="advance_status", text="Faire avancer",
         confirmation="Déplacer cette commande vers le statut choisi ?",
         icon_class="fa fa-forward",
-        form='''<div class="mb-3"><label class="form-label">Nouveau statut</label>
+        form='''<form onsubmit="return false;"><div class="mb-3"><label class="form-label">Nouveau statut</label>
           <select class="form-control" name="status">
             <option value="preparing">preparing</option>
             <option value="ready">ready</option>
@@ -268,7 +280,7 @@ class OrderView(_ReadOnly):
             <option value="completed">completed</option>
           </select></div>
           <div class="mb-3"><label class="form-label">Raison (optionnel)</label>
-          <input class="form-control" name="reason"/></div>''',
+          <input class="form-control" name="reason"/></div></form>''',
     )
     async def advance_status(self, request: Request, pk) -> str:
         data = await request.form()
@@ -277,8 +289,8 @@ class OrderView(_ReadOnly):
     @row_action(
         name="cancel_order", text="Annuler", action_btn_class="btn-outline-danger",
         confirmation="Annuler cette commande ?", icon_class="fa fa-ban",
-        form='''<div class="mb-3"><label class="form-label">Raison</label>
-                <input class="form-control" name="reason" required/></div>''',
+        form='''<form onsubmit="return false;"><div class="mb-3"><label class="form-label">Raison</label>
+                <input class="form-control" name="reason" required/></div></form>''',
     )
     async def cancel_order(self, request: Request, pk) -> str:
         data = await request.form()
@@ -299,13 +311,13 @@ class PaymentView(_ReadOnly):
         name="reconcile", text="Réconcilier",
         confirmation="Fixer manuellement le statut après vérification ?",
         icon_class="fa fa-scale-balanced",
-        form='''<div class="mb-3"><label class="form-label">Statut</label>
+        form='''<form onsubmit="return false;"><div class="mb-3"><label class="form-label">Statut</label>
           <select class="form-control" name="status">
             <option value="succeeded">succeeded</option>
             <option value="failed">failed</option>
           </select></div>
           <div class="mb-3"><label class="form-label">Note (optionnel)</label>
-          <input class="form-control" name="note"/></div>''',
+          <input class="form-control" name="note"/></div></form>''',
     )
     async def reconcile(self, request: Request, pk) -> str:
         data = await request.form()
@@ -314,10 +326,10 @@ class PaymentView(_ReadOnly):
     @row_action(
         name="refund", text="Rembourser", action_btn_class="btn-outline-danger",
         confirmation="Émettre un remboursement ?", icon_class="fa fa-rotate-left",
-        form='''<div class="mb-3"><label class="form-label">Montant</label>
+        form='''<form onsubmit="return false;"><div class="mb-3"><label class="form-label">Montant</label>
           <input class="form-control" name="amount" type="number" step="0.01" required/></div>
           <div class="mb-3"><label class="form-label">Raison (optionnel)</label>
-          <input class="form-control" name="reason"/></div>''',
+          <input class="form-control" name="reason"/></div></form>''',
     )
     async def refund(self, request: Request, pk) -> str:
         data = await request.form()
@@ -419,7 +431,11 @@ class SourcerProfileView(_ReadOnly):
     name = "Sourceur"
     label = "Sourceurs"
     icon = "fa fa-user-tie"
-    fields = ["display_name", "phone", "status", "collaboration_type", "is_featured", "created_at"]
+    fields = [
+        "id", "user_id", "display_name", "phone", "status", "collaboration_type",
+        "payout_method", "payout_phone", "is_featured", "rejection_reason",
+        "approved_at", "created_at", "updated_at",
+    ]
     searchable_fields = ["display_name", "phone"]
     sortable_fields = ["created_at", "status"]
 
@@ -433,8 +449,8 @@ class SourcerProfileView(_ReadOnly):
     @row_action(
         name="reject", text="Rejeter", action_btn_class="btn-outline-danger",
         icon_class="fa fa-xmark",
-        form='''<div class="mb-3"><label class="form-label">Raison</label>
-                <input class="form-control" name="reason" required/></div>''',
+        form='''<form onsubmit="return false;"><div class="mb-3"><label class="form-label">Raison</label>
+                <input class="form-control" name="reason" required/></div></form>''',
     )
     async def reject(self, request: Request, pk) -> str:
         data = await request.form()
@@ -456,8 +472,8 @@ class SubmissionView(_ReadOnly):
 
     @row_action(
         name="refuse", text="Refuser", action_btn_class="btn-outline-danger", icon_class="fa fa-xmark",
-        form='''<div class="mb-3"><label class="form-label">Raison</label>
-                <input class="form-control" name="reason" required/></div>''',
+        form='''<form onsubmit="return false;"><div class="mb-3"><label class="form-label">Raison</label>
+                <input class="form-control" name="reason" required/></div></form>''',
     )
     async def refuse(self, request: Request, pk) -> str:
         data = await request.form()
@@ -467,7 +483,7 @@ class SubmissionView(_ReadOnly):
         name="catalogue", text="Cataloguer",
         confirmation="Créer une pièce à partir de cette proposition acceptée ?",
         icon_class="fa fa-tag",
-        form='''<div class="mb-3"><label class="form-label">Titre</label>
+        form='''<form onsubmit="return false;"><div class="mb-3"><label class="form-label">Titre</label>
           <input class="form-control" name="title" required/></div>
           <div class="mb-3"><label class="form-label">Prix</label>
           <input class="form-control" name="price" type="number" step="0.01" required/></div>
@@ -476,7 +492,7 @@ class SubmissionView(_ReadOnly):
             <option value="good">good</option>
             <option value="very_good">very good</option>
             <option value="new">new</option>
-          </select></div>''',
+          </select></div></form>''',
     )
     async def catalogue(self, request: Request, pk) -> str:
         data = await request.form()
@@ -645,7 +661,7 @@ class PersonView(_ReadOnly):
     @row_action(
         name="change_role", text="Changer de rôle",
         confirmation="Changer le rôle de cette personne ?", icon_class="fa fa-user-gear",
-        form='''<div class="mb-3"><label class="form-label">Rôle</label>
+        form='''<form onsubmit="return false;"><div class="mb-3"><label class="form-label">Rôle</label>
           <select class="form-control" name="role">
             <option value="customer">customer</option>
             <option value="sourcer">sourcer</option>
@@ -653,7 +669,7 @@ class PersonView(_ReadOnly):
             <option value="admin">admin</option>
           </select></div>
           <div class="mb-3"><label class="form-label">Raison (optionnel)</label>
-          <input class="form-control" name="reason"/></div>''',
+          <input class="form-control" name="reason"/></div></form>''',
     )
     async def change_role(self, request: Request, pk) -> str:
         data = await request.form()
