@@ -26,6 +26,7 @@ from app.modules.sourcing.schemas import (
     MediaOut,
     PayoutOut,
     RejectIn,
+    SourcerApplicationCounts,
     SourcerProfileOut,
     SubmissionCreate,
     SubmissionOut,
@@ -115,6 +116,14 @@ async def list_applications(
         status=status_filter, limit=limit, offset=offset
     )
     return [SourcerProfileOut.model_validate(p) for p in items]
+
+
+@admin_router.get("/applications/count", response_model=SourcerApplicationCounts,
+                  dependencies=[_APPROVE])
+async def application_counts(service: Service) -> SourcerApplicationCounts:
+    """Sourcer applications grouped by status — for an admin badge (e.g. the
+    count of PENDING requests to review). One cheap grouped query."""
+    return SourcerApplicationCounts(**await service.application_counts())
 
 
 @admin_router.post("/applications/{profile_id}/approve",

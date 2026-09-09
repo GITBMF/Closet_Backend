@@ -223,6 +223,13 @@ class SourcingService:
     async def list_applications(self, *, status, limit, offset):
         return await self.repo.list_profiles(status=status, limit=limit, offset=offset)
 
+    async def application_counts(self) -> dict[str, int]:
+        """Applications per status + total — for the admin badge."""
+        counts = await self.repo.count_profiles_by_status()
+        by = {s.value: int(counts.get(s, 0)) for s in SourcerStatus}
+        by["total"] = sum(by.values())
+        return by
+
     async def approve_application(
         self, profile_id: uuid.UUID, *, admin_id: uuid.UUID
     ) -> SourcerProfile:

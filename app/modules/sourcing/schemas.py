@@ -142,3 +142,14 @@ class PayoutOut(_ORM):
     provider_reference: str | None
     paid_at: datetime | None
     created_at: datetime
+
+
+# --------------------------------------------------- admin badge counts
+class SourcerApplicationCounts(BaseModel):
+    """Sourcer applications grouped by status — for an admin badge."""
+
+    pending: int = 0
+    approved: int = 0
+    rejected: int = 0
+    suspended: int = 0
+    total: int = 0
