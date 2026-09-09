@@ -19,11 +19,13 @@ class ConsoleProvider(ChannelProvider):
     code = "console"
 
     async def send_message(
-        self, *, to: str, subject: str | None, body: str
+        self, *, to: str, subject: str | None, body: str, html: str | None = None
     ) -> SendResult:
         line = f"[notification] to={to}"
         if subject:
             line += f" subject={subject!r}"
         line += f" body={body!r}"
+        if html:
+            line += " (+html)"
         logger.info(line)
         return SendResult(ok=True, provider_message_id="console", raw={"logged": True})

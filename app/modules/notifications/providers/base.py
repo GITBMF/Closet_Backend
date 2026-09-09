@@ -9,6 +9,9 @@ A provider does exactly one thing: given a rendered message and a resolved
 recipient address, try to deliver it and report success/failure. It never
 touches the database and never raises for a normal delivery failure — it returns
 a SendResult the service records.
+
+`html` is an optional rich-HTML body for channels that support it (e-mail). When
+None, providers fall back to the plain-text `body`. Non-HTML channels ignore it.
 """
 
 from __future__ import annotations
@@ -30,6 +33,6 @@ class ChannelProvider:
     code: str = "base"
 
     async def send_message(
-        self, *, to: str, subject: str | None, body: str
+        self, *, to: str, subject: str | None, body: str, html: str | None = None
     ) -> SendResult:
         raise NotImplementedError

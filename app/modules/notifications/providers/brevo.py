@@ -4,10 +4,13 @@ Delivers the `email` channel via Brevo's API (POST /v3/smtp/email). Reads all
 config through the generic load_email_config() helper — no Brevo-specific
 setting names — so switching providers is a config change, not a code change.
 Never raises for a delivery problem; returns SendResult the service records.
+
+When the template supplies rich `html`, it is sent as-is as the HTML part;
+otherwise the plain-text `body` is wrapped in a <pre> so it still renders.
 """
 from __future__ import annotations
 
-import html
+import html as html_lib
 import logging
 
 import httpx
@@ -18,12 +21,19 @@ from app.modules.notifications.providers.email_config import load_email_config
 logger = logging.getLogger("closet.notifications")
 
 
+def _fallback_html(body: str) -> str:
+    return (
+        '<html><body><pre style="font:inherit;white-space:pre-wrap;margin:0">'
+        + html_lib.escape(body) + "</pre></body></html>"
+    )
+
+
 class BrevoProvider(ChannelProvider):
     code = "brevo"
     DEFAULT_BASE_URL = "https://api.brevo.com"
 
     async def send_message(
-        self, *, to: str, subject: str | None, body: str
+        self, *, to: str, subject: str | None, body: str, html: str | None = None
     ) -> SendResult:
         cfg = load_email_config(self.DEFAULT_BASE_URL)
         if (why := cfg.missing()) is not None:
@@ -34,10 +44,7 @@ class BrevoProvider(ChannelProvider):
             "to": [{"email": to}],
             "subject": subject or "",
             "textContent": body,
-            "htmlContent": (
-                "<html><body><pre style=\"font:inherit;white-space:pre-wrap;"
-                "margin:0\">" + html.escape(body) + "</pre></body></html>"
-            ),
+            "htmlContent": html if html else _fallback_html(body),
         }
         headers = {
             "api-key": cfg.api_key,

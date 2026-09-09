@@ -24,6 +24,9 @@ from app.core.exceptions import (
 )
 from app.modules.catalogue.service import CatalogueService
 from app.modules.identity.service import IdentityService
+from app.modules.identity.constants import UserRole
+from app.modules.notifications.constants import NotificationChannel
+from app.modules.notifications.hook import send_notification
 from app.modules.sourcing.constants import (
     CollaborationType,
     SourcerStatus,
@@ -91,6 +94,7 @@ class SourcingService:
             existing.payout_method = payload.payout_method or existing.payout_method
             existing.payout_phone = payload.payout_phone or existing.payout_phone
             await self.db.commit()
+            await self._alert_admins_of_application(existing.display_name)
             return await self.repo.get_profile(existing.id)
 
         profile = SourcerProfile(
@@ -104,7 +108,32 @@ class SourcingService:
         )
         await self.repo.add_profile(profile)
         await self.db.commit()
+        await self._alert_admins_of_application(profile.display_name)
         return await self.repo.get_profile(profile.id)
+
+    async def _alert_admins_of_application(self, applicant_name: str | None) -> None:
+        """Best-effort: e-mail active admins that a new sourcer application
+        arrived, so requests aren't missed.
+
+        Runs after the application is committed. The notification hook sends on
+        its own session and never raises, so a mail hiccup can't affect the
+        application; any lookup error is swallowed too.
+        """
+        try:
+            admins, _ = await self.identity.repo.list_users(
+                role=UserRole.ADMIN, is_active=True, page_size=100
+            )
+        except Exception:  # noqa: BLE001
+            return
+        for admin in admins:
+            if not getattr(admin, "email", None):
+                continue
+            await send_notification(
+                "sourcing.application_received",
+                channel=NotificationChannel.EMAIL,
+                to_email=admin.email,
+                context={"applicant_name": applicant_name or "Un utilisateur"},
+            )
 
     async def my_profile(self, user_id: uuid.UUID) -> SourcerProfile:
         profile = await self.repo.get_profile_for_user(user_id)
