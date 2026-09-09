@@ -36,6 +36,7 @@ from app.modules.identity.constants import Permission
 from app.modules.identity.dependencies import (
     CurrentUser,
     OptionalUser,
+    Shopper,
     require_permission,
 )
 
@@ -107,13 +108,13 @@ async def list_universes(service: Service) -> list[UniverseOut]:
 
 # ============================================================ customer wishlist
 @router.get("/wishlist", response_model=list[PieceSummary])
-async def my_wishlist(service: Service, user: CurrentUser) -> list[PieceSummary]:
+async def my_wishlist(service: Service, user: Shopper) -> list[PieceSummary]:
     return [PieceSummary.from_piece(p) for p in await service.list_wishlist(user.id)]
 
 
 @router.post("/wishlist/{piece_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def add_to_wishlist(
-    piece_id: uuid.UUID, service: Service, user: CurrentUser
+    piece_id: uuid.UUID, service: Service, user: Shopper
 ) -> Response:
     await service.add_to_wishlist(user.id, piece_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -121,7 +122,7 @@ async def add_to_wishlist(
 
 @router.delete("/wishlist/{piece_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_from_wishlist(
-    piece_id: uuid.UUID, service: Service, user: CurrentUser
+    piece_id: uuid.UUID, service: Service, user: Shopper
 ) -> Response:
     await service.remove_from_wishlist(user.id, piece_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

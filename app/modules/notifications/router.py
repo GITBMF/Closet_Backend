@@ -1,8 +1,8 @@
-"""Notification HTTP layer — admin template management + dispatch log.
+"""Notification HTTP layer — admin template + branding management, dispatch log.
 
 There is no public/customer endpoint here: notifications are sent internally by
 other modules calling NotificationService.send(). These routes only let admins
-manage templates and inspect what went out.
+manage templates, edit branding (logo / accent colour), and inspect what went out.
 """
 
 from __future__ import annotations
@@ -19,6 +19,8 @@ from app.modules.notifications.constants import (
 )
 from app.modules.notifications.dependencies import Service
 from app.modules.notifications.schemas import (
+    BrandingOut,
+    BrandingUpdate,
     NotificationOut,
     NotificationsPage,
     TemplateIn,
@@ -34,6 +36,7 @@ admin_router = APIRouter(
 _MANAGE = Depends(require_permission(Permission.USER_MANAGE))
 
 
+# ---------------------------------------------------------- templates
 @admin_router.post("/templates", response_model=TemplateOut,
                    status_code=status.HTTP_201_CREATED, dependencies=[_MANAGE])
 async def create_template(payload: TemplateIn, service: Service) -> TemplateOut:
@@ -62,6 +65,18 @@ async def update_template(
     )
 
 
+# ----------------------------------------------------------- branding
+@admin_router.get("/branding", response_model=BrandingOut, dependencies=[_MANAGE])
+async def get_branding(service: Service) -> BrandingOut:
+    return BrandingOut.model_validate(await service.get_branding())
+
+
+@admin_router.patch("/branding", response_model=BrandingOut, dependencies=[_MANAGE])
+async def update_branding(payload: BrandingUpdate, service: Service) -> BrandingOut:
+    return BrandingOut.model_validate(await service.update_branding(payload))
+
+
+# ------------------------------------------------------- dispatch log
 @admin_router.get("", response_model=NotificationsPage, dependencies=[_MANAGE])
 async def list_dispatch_log(
     service: Service,

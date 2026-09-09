@@ -35,6 +35,7 @@ MFA_OK_KEY = "ops_mfa_ok"    # set only after a valid TOTP code THIS session
 # TOTP challenge. Starlette-Admin's AuthMiddleware guards every other route.
 ONBOARDING_ROUTE_NAMES = [
     "ops-onboarding",
+    "ops-onboarding-email",
     "ops-onboarding-password",
     "ops-onboarding-mfa",
     "ops-verify-2fa",
@@ -154,6 +155,11 @@ class OpsAuthProvider(AuthProvider):
         if user.must_change_password:
             # Re-checked per request, like the role: a flag set while a session
             # is open (e.g. an admin reset by the CLI) takes effect at once.
+            return False
+
+        if user.email_verified_at is None:
+            # E-mail must be verified before the panel opens; the onboarding
+            # flow sends a code and stamps email_verified_at.
             return False
 
         # 2FA is a hard prerequisite. An admin without it enrolled is held out

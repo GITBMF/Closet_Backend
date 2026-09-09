@@ -58,6 +58,16 @@ class SourcingRepository:
         ).scalars().all()
         return list(rows), int(total)
 
+    async def count_profiles_by_status(self) -> dict[SourcerStatus, int]:
+        """One grouped query: {status: count}. Absent statuses are simply missing."""
+        rows = (
+            await self.db.execute(
+                select(SourcerProfile.status, func.count())
+                .group_by(SourcerProfile.status)
+            )
+        ).all()
+        return {status: int(n) for status, n in rows}
+
     # --------------------------------------------------- submissions
     async def add_submission(self, submission: Submission) -> Submission:
         self.db.add(submission)

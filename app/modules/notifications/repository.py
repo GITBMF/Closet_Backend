@@ -1,4 +1,4 @@
-"""Notification repository — template lookup and dispatch-log SQL."""
+"""Notification repository — template lookup, branding, and dispatch-log SQL."""
 
 from __future__ import annotations
 
@@ -11,7 +11,13 @@ from app.modules.notifications.constants import (
     NotificationChannel,
     NotificationStatus,
 )
-from app.modules.notifications.models import Notification, NotificationTemplate
+from app.modules.notifications.models import (
+    Branding,
+    Notification,
+    NotificationTemplate,
+)
+
+_BRANDING_ID = 1
 
 
 class NotificationRepository:
@@ -64,6 +70,16 @@ class NotificationRepository:
             NotificationTemplate.locale,
         )
         return list((await self.db.execute(stmt)).scalars().all())
+
+    # -------------------------------------------------------- branding
+    async def get_branding(self) -> Branding | None:
+        return (
+            await self.db.execute(select(Branding).where(Branding.id == _BRANDING_ID))
+        ).scalar_one_or_none()
+
+    def add_branding(self, branding: Branding) -> Branding:
+        self.db.add(branding)
+        return branding
 
     # ------------------------------------------------------ dispatch log
     async def add_notification(self, notification: Notification) -> Notification:

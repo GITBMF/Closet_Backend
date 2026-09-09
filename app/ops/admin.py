@@ -14,7 +14,15 @@ from __future__ import annotations
 from starlette.middleware import Middleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette_admin import PasswordField
+from starlette_admin import (
+    ColorField,
+    EmailField,
+    StringField,
+    TextAreaField,
+    URLField,
+)
 from starlette.requests import Request
+from starlette.responses import HTMLResponse, Response
 from starlette_admin import row_action
 from starlette_admin.contrib.sqla import Admin, ModelView
 from starlette_admin.views import DropDown
@@ -42,7 +50,7 @@ from app.modules.geo.models import (
     Region,
     Subdivision,
 )
-from app.modules.notifications.models import Notification, NotificationTemplate
+from app.modules.notifications.models import Branding, Notification, NotificationTemplate
 from app.modules.ops.models import AppSetting
 from app.modules.orders.models import Purchase
 from app.modules.payments.models import Payment, Refund
@@ -71,7 +79,7 @@ class UserView(ModelView):
             exclude_from_list=True,
             exclude_from_detail=True,
         ),
-        "is_active", "must_change_password", "totp_enabled_at",
+        "avatar_url", "is_active", "must_change_password", "email_verified_at", "totp_enabled_at",
         "failed_login_count", "locked_until", "last_login_at",
         "created_at", "deleted_at",
     ]
@@ -79,6 +87,7 @@ class UserView(ModelView):
     exclude_fields_from_create = [
         "failed_login_count", "locked_until", "last_login_at", "deleted_at",
         "totp_enabled_at", "created_at",
+        "email_verified_at", "avatar_url",
         # is_active is forced True in before_create; hide it here so an
         # unchecked checkbox can't create an inactive account
         "is_active",
@@ -86,6 +95,9 @@ class UserView(ModelView):
     exclude_fields_from_edit = [
         "failed_login_count", "locked_until", "last_login_at", "deleted_at",
         "totp_enabled_at", "created_at",
+        # role is not editable on the form: changes go through the guarded
+        # change-role action, and sourcer must come via the application flow.
+        "role",
     ]
     searchable_fields = ["email", "full_name", "phone"]
     sortable_fields = ["email", "full_name", "role", "created_at", "last_login_at"]
@@ -100,6 +112,14 @@ class UserView(ModelView):
         sets their own on first login, and they enrol their own 2FA via
         /api/v1/me/mfa/setup afterwards.
         """
+        _role = getattr(data.get("role"), "value", data.get("role"))
+        if _role == "sourcer":
+            raise FormValidationError(
+                {"role": "Un nouveau sourceur doit passer par la phase de "
+                         "candidature (demande d'adhésion puis approbation). "
+                         "Le rôle sourceur ne peut pas être attribué "
+                         "directement."}
+            )
         raw = (data.get("password") or "").strip()
         if not raw:
             raise FormValidationError({"password": "Mot de passe requis."})
@@ -252,7 +272,7 @@ class OrderView(_ReadOnly):
         name="advance_status", text="Faire avancer",
         confirmation="Déplacer cette commande vers le statut choisi ?",
         icon_class="fa fa-forward",
-        form='''<div class="mb-3"><label class="form-label">Nouveau statut</label>
+        form='''<form onsubmit="return false;"><div class="mb-3"><label class="form-label">Nouveau statut</label>
           <select class="form-control" name="status">
             <option value="preparing">preparing</option>
             <option value="ready">ready</option>
@@ -260,7 +280,7 @@ class OrderView(_ReadOnly):
             <option value="completed">completed</option>
           </select></div>
           <div class="mb-3"><label class="form-label">Raison (optionnel)</label>
-          <input class="form-control" name="reason"/></div>''',
+          <input class="form-control" name="reason"/></div></form>''',
     )
     async def advance_status(self, request: Request, pk) -> str:
         data = await request.form()
@@ -269,8 +289,8 @@ class OrderView(_ReadOnly):
     @row_action(
         name="cancel_order", text="Annuler", action_btn_class="btn-outline-danger",
         confirmation="Annuler cette commande ?", icon_class="fa fa-ban",
-        form='''<div class="mb-3"><label class="form-label">Raison</label>
-                <input class="form-control" name="reason" required/></div>''',
+        form='''<form onsubmit="return false;"><div class="mb-3"><label class="form-label">Raison</label>
+                <input class="form-control" name="reason" required/></div></form>''',
     )
     async def cancel_order(self, request: Request, pk) -> str:
         data = await request.form()
@@ -291,13 +311,13 @@ class PaymentView(_ReadOnly):
         name="reconcile", text="Réconcilier",
         confirmation="Fixer manuellement le statut après vérification ?",
         icon_class="fa fa-scale-balanced",
-        form='''<div class="mb-3"><label class="form-label">Statut</label>
+        form='''<form onsubmit="return false;"><div class="mb-3"><label class="form-label">Statut</label>
           <select class="form-control" name="status">
             <option value="succeeded">succeeded</option>
             <option value="failed">failed</option>
           </select></div>
           <div class="mb-3"><label class="form-label">Note (optionnel)</label>
-          <input class="form-control" name="note"/></div>''',
+          <input class="form-control" name="note"/></div></form>''',
     )
     async def reconcile(self, request: Request, pk) -> str:
         data = await request.form()
@@ -306,10 +326,10 @@ class PaymentView(_ReadOnly):
     @row_action(
         name="refund", text="Rembourser", action_btn_class="btn-outline-danger",
         confirmation="Émettre un remboursement ?", icon_class="fa fa-rotate-left",
-        form='''<div class="mb-3"><label class="form-label">Montant</label>
+        form='''<form onsubmit="return false;"><div class="mb-3"><label class="form-label">Montant</label>
           <input class="form-control" name="amount" type="number" step="0.01" required/></div>
           <div class="mb-3"><label class="form-label">Raison (optionnel)</label>
-          <input class="form-control" name="reason"/></div>''',
+          <input class="form-control" name="reason"/></div></form>''',
     )
     async def refund(self, request: Request, pk) -> str:
         data = await request.form()
@@ -411,7 +431,11 @@ class SourcerProfileView(_ReadOnly):
     name = "Sourceur"
     label = "Sourceurs"
     icon = "fa fa-user-tie"
-    fields = ["display_name", "phone", "status", "collaboration_type", "is_featured", "created_at"]
+    fields = [
+        "id", "user_id", "display_name", "phone", "status", "collaboration_type",
+        "payout_method", "payout_phone", "is_featured", "rejection_reason",
+        "approved_at", "created_at", "updated_at",
+    ]
     searchable_fields = ["display_name", "phone"]
     sortable_fields = ["created_at", "status"]
 
@@ -425,8 +449,8 @@ class SourcerProfileView(_ReadOnly):
     @row_action(
         name="reject", text="Rejeter", action_btn_class="btn-outline-danger",
         icon_class="fa fa-xmark",
-        form='''<div class="mb-3"><label class="form-label">Raison</label>
-                <input class="form-control" name="reason" required/></div>''',
+        form='''<form onsubmit="return false;"><div class="mb-3"><label class="form-label">Raison</label>
+                <input class="form-control" name="reason" required/></div></form>''',
     )
     async def reject(self, request: Request, pk) -> str:
         data = await request.form()
@@ -448,8 +472,8 @@ class SubmissionView(_ReadOnly):
 
     @row_action(
         name="refuse", text="Refuser", action_btn_class="btn-outline-danger", icon_class="fa fa-xmark",
-        form='''<div class="mb-3"><label class="form-label">Raison</label>
-                <input class="form-control" name="reason" required/></div>''',
+        form='''<form onsubmit="return false;"><div class="mb-3"><label class="form-label">Raison</label>
+                <input class="form-control" name="reason" required/></div></form>''',
     )
     async def refuse(self, request: Request, pk) -> str:
         data = await request.form()
@@ -459,7 +483,7 @@ class SubmissionView(_ReadOnly):
         name="catalogue", text="Cataloguer",
         confirmation="Créer une pièce à partir de cette proposition acceptée ?",
         icon_class="fa fa-tag",
-        form='''<div class="mb-3"><label class="form-label">Titre</label>
+        form='''<form onsubmit="return false;"><div class="mb-3"><label class="form-label">Titre</label>
           <input class="form-control" name="title" required/></div>
           <div class="mb-3"><label class="form-label">Prix</label>
           <input class="form-control" name="price" type="number" step="0.01" required/></div>
@@ -468,7 +492,7 @@ class SubmissionView(_ReadOnly):
             <option value="good">good</option>
             <option value="very_good">very good</option>
             <option value="new">new</option>
-          </select></div>''',
+          </select></div></form>''',
     )
     async def catalogue(self, request: Request, pk) -> str:
         data = await request.form()
@@ -495,13 +519,130 @@ class NotificationView(_ReadOnly):
     fields_default_sort = [("queued_at", True)]
 
 
+# --- e-mail preview helpers (ops panel) --------------------------------------
+# Sample values used only to render previews, so admins see a realistic e-mail
+# without sending one. Real sends use the message's actual context.
+_PREVIEW_SAMPLE = {
+    "full_name": "Signe Emmanuel",
+    "customer_name": "Signe Emmanuel",
+    "applicant_name": "Signe Emmanuel",
+    "code": "482915",
+    "token": "739204",
+    "order_number": "CLO-20260907-8DE3",
+    "ttl_minutes": "15",
+    "url": "https://apicloset.koungstudio.ca/d/EXEMPLE",
+}
+
+
+class _PreviewDict(dict):
+    def __missing__(self, key):  # noqa: ANN001, ANN201
+        return "{" + key + "}"
+
+
+def _preview_html(tpl, brand) -> str:
+    """Render a template's HTML (or wrapped plain body) with current branding +
+    sample data. Never raises - falls back to the raw string on any error."""
+    ctx = {
+        "brand_name": getattr(brand, "brand_name", None) or "ClosET",
+        "logo_url": getattr(brand, "logo_url", None) or "",
+        "accent_color": getattr(brand, "accent_color", None) or "#8A5A2B",
+        "support_email": getattr(brand, "support_email", None) or "",
+        "footer_note": getattr(brand, "footer_note", None) or "",
+        **_PREVIEW_SAMPLE,
+    }
+    raw = tpl.html_body or (
+        '<div style="font-family:Arial,Helvetica,sans-serif;white-space:pre-wrap;'
+        'padding:24px;color:#1a1a1a;line-height:1.6;">' + (tpl.body or "") + "</div>"
+    )
+    try:
+        return raw.format_map(_PreviewDict(ctx))
+    except Exception:
+        return raw
+
+
 class TemplateView(_Reference):
     identity = "template"
-    name = "Modèle"
-    label = "Modèles de message"
+    name = "Modele"
+    label = "Modeles de message"
     icon = "fa fa-envelope"
-    fields = ["code", "channel", "locale", "subject", "body"]
-    searchable_fields = ["code"]
+    fields = [
+        StringField(
+            "title", label="Titre", read_only=True,
+            exclude_from_create=True, exclude_from_edit=True,
+        ),
+        "code", "channel", "locale", "subject",
+        TextAreaField(
+            "body", label="Texte (repli / WhatsApp-SMS)", rows=6,
+            help_text="Version texte simple. Sert de repli pour l'e-mail et de "
+                      "contenu pour WhatsApp / SMS.",
+        ),
+        TextAreaField(
+            "html_body", label="HTML (e-mail)", rows=18,
+            help_text="HTML riche pour l'e-mail (facultatif). Variables : "
+                      "{brand_name}, {logo_url}, {accent_color}, {support_email}, "
+                      "{footer_note}, plus les variables du message "
+                      "({code}, {token}, {full_name}, {order_number}, "
+                      "{customer_name}, {applicant_name}, {ttl_minutes}).",
+        ),
+    ]
+    fields_default_sort = ["code"]
+    searchable_fields = ["code", "subject"]
+    exclude_fields_from_list = ["subject", "body", "html_body"]
+    # code / channel / locale are the dispatch keys - set at creation, then
+    # read-only so an edit can't silently detach a template from its caller.
+    exclude_fields_from_edit = ["code", "channel", "locale"]
+
+    @row_action(
+        name="preview",
+        text="Apercu",
+        icon_class="fa fa-eye",
+        custom_response=True,
+    )
+    async def preview(self, request: Request, pk) -> Response:  # noqa: ANN001
+        """Open the rendered e-mail (current branding + sample data) in a new tab."""
+        from app.core.database import AsyncSessionLocal
+        from app.modules.notifications.repository import NotificationRepository
+
+        async with AsyncSessionLocal() as db:
+            repo = NotificationRepository(db)
+            tpl = await repo.get_template_by_id(int(pk))
+            brand = await repo.get_branding()
+        if tpl is None:
+            return HTMLResponse("<p>Modele introuvable.</p>", status_code=404)
+        return HTMLResponse(_preview_html(tpl, brand))
+
+
+class BrandingView(_Reference):
+    """Single-row brand identity used to render e-mails (logo, colour, name).
+
+    Editable at runtime, so the logo or accent colour changes with no deploy.
+    Only one row exists (id = 1); creating or deleting rows is disabled.
+    """
+
+    identity = "branding"
+    name = "Marque"
+    label = "Identite de marque"
+    icon = "fa fa-palette"
+    fields = [
+        StringField("brand_name", label="Nom de la marque"),
+        URLField(
+            "logo_url", label="Logo (URL)",
+            help_text="URL publique du logo, affiche en en-tete des e-mails.",
+        ),
+        ColorField("accent_color", label="Couleur d'accent"),
+        EmailField("support_email", label="E-mail de support"),
+        StringField("footer_note", label="Note de pied de page"),
+        "updated_at",
+    ]
+    exclude_fields_from_list = ["support_email", "footer_note", "updated_at"]
+    exclude_fields_from_create = ["updated_at"]
+    exclude_fields_from_edit = ["updated_at"]
+
+    def can_create(self, request) -> bool:  # noqa: ANN001
+        return False
+
+    def can_delete(self, request) -> bool:  # noqa: ANN001
+        return False
 
 
 # ------------------------------------------------------- people (actions)
@@ -520,7 +661,7 @@ class PersonView(_ReadOnly):
     @row_action(
         name="change_role", text="Changer de rôle",
         confirmation="Changer le rôle de cette personne ?", icon_class="fa fa-user-gear",
-        form='''<div class="mb-3"><label class="form-label">Rôle</label>
+        form='''<form onsubmit="return false;"><div class="mb-3"><label class="form-label">Rôle</label>
           <select class="form-control" name="role">
             <option value="customer">customer</option>
             <option value="sourcer">sourcer</option>
@@ -528,7 +669,7 @@ class PersonView(_ReadOnly):
             <option value="admin">admin</option>
           </select></div>
           <div class="mb-3"><label class="form-label">Raison (optionnel)</label>
-          <input class="form-control" name="reason"/></div>''',
+          <input class="form-control" name="reason"/></div></form>''',
     )
     async def change_role(self, request: Request, pk) -> str:
         data = await request.form()
@@ -673,6 +814,7 @@ def build_admin() -> Admin:
         views=[
             NotificationView(Notification),
             TemplateView(NotificationTemplate),
+            BrandingView(Branding),
         ],
     ))
 

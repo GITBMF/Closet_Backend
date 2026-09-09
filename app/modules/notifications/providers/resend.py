@@ -6,10 +6,12 @@ just: NOTIFICATIONS_PROVIDERS={"email":"resend"} + set EMAIL_API_KEY to your
 Resend key. No other changes.
 
 Resend API: POST /emails, Bearer auth, JSON {from,to,subject,text,html}.
+When the template supplies rich `html`, it is sent as-is; otherwise the
+plain-text `body` is wrapped in a <pre> so it still renders.
 """
 from __future__ import annotations
 
-import html
+import html as html_lib
 import logging
 
 import httpx
@@ -20,12 +22,19 @@ from app.modules.notifications.providers.email_config import load_email_config
 logger = logging.getLogger("closet.notifications")
 
 
+def _fallback_html(body: str) -> str:
+    return (
+        '<pre style="font:inherit;white-space:pre-wrap;margin:0">'
+        + html_lib.escape(body) + "</pre>"
+    )
+
+
 class ResendProvider(ChannelProvider):
     code = "resend"
     DEFAULT_BASE_URL = "https://api.resend.com"
 
     async def send_message(
-        self, *, to: str, subject: str | None, body: str
+        self, *, to: str, subject: str | None, body: str, html: str | None = None
     ) -> SendResult:
         cfg = load_email_config(self.DEFAULT_BASE_URL)
         if (why := cfg.missing()) is not None:
@@ -38,10 +47,7 @@ class ResendProvider(ChannelProvider):
             "to": [to],
             "subject": subject or "",
             "text": body,
-            "html": (
-                "<pre style=\"font:inherit;white-space:pre-wrap;margin:0\">"
-                + html.escape(body) + "</pre>"
-            ),
+            "html": html if html else _fallback_html(body),
         }
         headers = {
             "Authorization": f"Bearer {cfg.api_key}",

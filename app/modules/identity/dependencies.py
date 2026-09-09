@@ -110,6 +110,37 @@ CurrentUser = Annotated[User, Depends(get_ready_user)]
 #: pending: GET/PATCH /me, POST /me/password, POST /auth/logout.
 PendingUser = Annotated[User, Depends(get_current_user)]
 OptionalUser = Annotated[User | None, Depends(get_current_user_optional)]
+
+
+# ---- shopping guards: staff (admin / courier) may not shop ------------------
+# Buyers are customers and sourcers (a sourcer is a customer who also supplies).
+# Admin and courier accounts are staff: they must not place orders or keep a
+# wishlist. Enforced here so the rule holds regardless of the client.
+_STAFF_ROLES = (UserRole.ADMIN, UserRole.COURIER)
+
+
+async def _shopper_only(user: CurrentUser) -> User:
+    if user.role in _STAFF_ROLES:
+        raise PermissionDeniedError(
+            "Les comptes administrateur et livreur ne peuvent pas faire d'achats.",
+            code="staff_cannot_shop",
+        )
+    return user
+
+
+async def _shopper_or_guest(user: OptionalUser) -> User | None:
+    if user is not None and user.role in _STAFF_ROLES:
+        raise PermissionDeniedError(
+            "Les comptes administrateur et livreur ne peuvent pas passer commande.",
+            code="staff_cannot_shop",
+        )
+    return user
+
+
+# A buyer (customer / sourcer) — use instead of CurrentUser on shopping routes.
+Shopper = Annotated[User, Depends(_shopper_only)]
+# A buyer OR a guest — use instead of OptionalUser on checkout.
+OptionalShopper = Annotated[User | None, Depends(_shopper_or_guest)]
 Ctx = Annotated[RequestContext, Depends(get_request_context)]
 Service = Annotated[IdentityService, Depends(get_identity_service)]
 
