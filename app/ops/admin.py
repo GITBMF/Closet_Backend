@@ -43,6 +43,7 @@ from app.ops.home import DashboardHome
 from app.modules.catalogue.models import House, Piece, Universe
 from app.modules.delivery.models import Courier, Delivery, DeliveryEvent
 from app.modules.delivery_pricing.models import DeliveryRate
+from app.modules.privileges.models import PrivilegeCode
 from app.modules.geo.models import (
     Division,
     FixedRateCity,
@@ -695,11 +696,36 @@ class CourierView(_Reference):
     icon = "fa fa-person-biking"
 
 
+class PrivilegeCodeView(_Reference):
+    identity = "privilege-code"
+    name = "Code promo"
+    label = "Codes promo"
+    icon = "fa fa-ticket"
+    fields = [
+        "code", "type", "value", "min_order_amount", "max_uses", "times_used",
+        "valid_from", "valid_until", "is_active", "created_at",
+    ]
+    exclude_fields_from_list = ["min_order_amount", "valid_from", "valid_until", "created_at"]
+    exclude_fields_from_create = ["times_used", "created_at"]
+    # code / type are fixed after creation; times_used is a read-only counter
+    exclude_fields_from_edit = ["code", "type", "times_used", "created_at"]
+    searchable_fields = ["code"]
+
+
 class DeliveryRateView(_Reference):
     identity = "delivery-rate"
     name = "Tarif"
     label = "Tarifs de livraison"
     icon = "fa fa-money-bill-wave"
+    fields = [
+        "scope", "region", "city", "amount", "currency",
+        "effective_from", "effective_to",
+    ]
+    exclude_fields_from_list = ["effective_from", "effective_to"]
+    # effective dates default in the DB; set them only for a scheduled change
+    exclude_fields_from_create = ["effective_from", "effective_to"]
+    # change a price by editing its amount; scope/target are fixed once set
+    exclude_fields_from_edit = ["scope", "region", "city", "effective_from", "effective_to"]
 
 
 class RegionView(_Reference):
@@ -783,6 +809,7 @@ def build_admin() -> Admin:
             DeliveryView(Delivery),
             DeliveryEventView(DeliveryEvent),
             ReturnView(ReturnTicket),
+            PrivilegeCodeView(PrivilegeCode),
         ],
     ))
 

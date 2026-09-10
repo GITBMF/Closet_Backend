@@ -16,6 +16,8 @@ from app.modules.identity.router import router as identity_router
 from app.modules.notifications.router import admin_router as notifications_admin_router
 from app.modules.orders.router import admin_router as orders_admin_router
 from app.modules.orders.router import router as orders_router
+from app.modules.privileges.router import admin_router as privileges_admin_router
+from app.modules.privileges.router import router as privileges_router
 from app.modules.payments.router import admin_router as payments_admin_router
 from app.modules.payments.router import router as payments_router
 from app.modules.returns.router import admin_router as returns_admin_router
@@ -54,6 +56,8 @@ api_router.include_router(sourcing_admin_router)
 # orders (checkout, tracking, lifecycle)
 api_router.include_router(orders_router)
 api_router.include_router(orders_admin_router)
+api_router.include_router(privileges_router)
+api_router.include_router(privileges_admin_router)
 
 # payments (initiate, webhook, admin reconcile/refund)
 api_router.include_router(payments_router)
