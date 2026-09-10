@@ -19,6 +19,8 @@ from app.modules.catalogue.repository import CatalogueRepository
 from app.modules.catalogue.service import CatalogueService
 from app.modules.delivery_pricing.repository import DeliveryPricingRepository
 from app.modules.delivery_pricing.service import DeliveryPricingService
+from app.modules.privileges.repository import PrivilegeRepository
+from app.modules.privileges.service import PrivilegeService
 from app.modules.geo.repository import GeoRepository
 from app.modules.orders.repository import OrderRepository
 from app.modules.orders.service import OrderService
@@ -31,7 +33,8 @@ def get_order_service(
     pricing = DeliveryPricingService(
         DeliveryPricingRepository(db), GeoRepository(db)
     )
-    return OrderService(OrderRepository(db), catalogue, pricing)
+    privileges = PrivilegeService(PrivilegeRepository(db))
+    return OrderService(OrderRepository(db), catalogue, pricing, privileges)
 
 
 Service = Annotated[OrderService, Depends(get_order_service)]

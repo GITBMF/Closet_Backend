@@ -3,12 +3,16 @@
 A rate is scoped either to a fixed-rate city or to a region. Rates are
 time-bounded (effective_from / effective_to) so a price change is a new row,
 never an overwrite — history is preserved.
+
+The `region` / `city` relationships let the ops panel show and pick the target
+by NAME instead of a raw id.
 """
 
 from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     BigInteger,
@@ -21,10 +25,13 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ENUM as PGEnum
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.modules.delivery_pricing.constants import DeliveryScope
+
+if TYPE_CHECKING:
+    from app.modules.geo.models import FixedRateCity, Region
 
 delivery_scope_enum = PGEnum(
     DeliveryScope, name="delivery_scope",
@@ -55,3 +62,15 @@ class DeliveryRate(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), nullable=False
     )
+
+    # Convenience relationships so the ops panel shows/pickers a target by name.
+    region: Mapped["Region | None"] = relationship(
+        "Region", foreign_keys=[region_id], lazy="selectin"
+    )
+    city: Mapped["FixedRateCity | None"] = relationship(
+        "FixedRateCity", foreign_keys=[city_id], lazy="selectin"
+    )
+
+    async def __admin_repr__(self, request) -> str:  # noqa: ANN001
+        target = getattr(self.city, "name", None) or getattr(self.region, "name", None) or "?"
+        return f"{target} — {self.amount} {self.currency}"

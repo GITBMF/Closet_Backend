@@ -15,6 +15,7 @@ from app.db import registry as _registry  # noqa: F401 — registers all models/
 from app.modules.identity.bootstrap import ensure_bootstrap_admin
 from app.modules.notifications.defaults import ensure_notification_defaults
 from app.modules.geo.seed import ensure_geo_seeded
+from app.modules.delivery_pricing.seed import ensure_delivery_rates_seeded
 from app.ops.admin import mount_ops
 
 
@@ -24,6 +25,7 @@ async def lifespan(_: FastAPI):
     await ensure_bootstrap_admin()
     await ensure_notification_defaults()
     await ensure_geo_seeded()
+    await ensure_delivery_rates_seeded()
     yield
     await engine.dispose()
 

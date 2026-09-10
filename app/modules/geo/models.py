@@ -29,6 +29,9 @@ class Region(Base):
         back_populates="region", cascade="all, delete-orphan"
     )
 
+    async def __admin_repr__(self, request) -> str:  # noqa: ANN001
+        return self.name
+
 
 class Division(Base):
     """Second-level division within a region."""
@@ -82,6 +85,9 @@ class FixedRateCity(Base):
     neighbourhoods: Mapped[list[Neighbourhood]] = relationship(
         back_populates="city", cascade="all, delete-orphan"
     )
+
+    async def __admin_repr__(self, request) -> str:  # noqa: ANN001
+        return self.name
 
 
 class Neighbourhood(Base):
