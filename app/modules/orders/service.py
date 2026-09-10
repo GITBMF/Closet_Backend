@@ -26,6 +26,7 @@ from app.core.exceptions import ConflictError, NotFoundError
 from app.modules.catalogue.constants import PieceStatus
 from app.modules.catalogue.service import CatalogueService
 from app.modules.delivery_pricing.service import DeliveryPricingService
+from app.modules.privileges.service import PrivilegeService
 from app.modules.identity.constants import ActorType
 from app.modules.orders.constants import OrderStatus
 from app.modules.orders.models import (
@@ -67,10 +68,12 @@ class OrderService:
         repo: OrderRepository,
         catalogue: CatalogueService,
         pricing: DeliveryPricingService,
+        privileges: PrivilegeService,
     ) -> None:
         self.repo = repo
         self.catalogue = catalogue
         self.pricing = pricing
+        self.privileges = privileges
 
     @property
     def db(self):
@@ -137,7 +140,12 @@ class OrderService:
 
         # 4. totals
         subtotal = sum((Decimal(p.price) for p in pieces), Decimal(0))
-        discount = Decimal(0)  # privilege codes applied by the privileges module later
+        discount = Decimal(0)
+        applied_code = None
+        if payload.privilege_code:
+            applied_code, discount = await self.privileges.apply(
+                payload.privilege_code, subtotal
+            )
         total = subtotal + delivery_fee - discount
 
         # 5. snapshot + persist (one transaction)
@@ -166,6 +174,13 @@ class OrderService:
             placed_at=datetime.now(UTC),
         )
         await self.repo.add_purchase(purchase)
+        if applied_code is not None:
+            await self.privileges.redeem(
+                applied_code,
+                purchase_id=order_id,
+                user_id=user_id,
+                amount=discount,
+            )
 
         for piece in pieces:
             await self.repo.add_item(

@@ -87,6 +87,7 @@ class Settings(BaseSettings):
     # the deployment where you want the database populated. Idempotent, so
     # leaving it on is harmless once seeded.
     SEED_GEO_ON_STARTUP: bool = True
+    SEED_DELIVERY_RATES_ON_STARTUP: bool = True
     OPS_BASE_URL: str = "/ops"
     OPS_SESSION_SECRET: str = ""      # falls back to JWT_SECRET
     OPS_LOGO_URL: str = ""
